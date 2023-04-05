@@ -49,6 +49,11 @@
     };
   };
 
+  programs.tmux.enable = true;
+  programs.tmux.terminal = "screen-256color";
+  programs.tmux.prefix = "´";
+  programs.tmux.keyMode = "vi";
+
   # Home Manager is pretty good at managing dotfiles. The primary way to manage
   # plain files is through 'home.file'.
   home.file = {
