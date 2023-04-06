@@ -1,6 +1,12 @@
 { config, pkgs, ... }:
 
-{
+let
+  doom-emacs = pkgs.callPackage (builtins.fetchTarball {
+    url = https://github.com/nix-community/nix-doom-emacs/archive/master.tar.gz;
+  }) {
+    doomPrivateDir = ./doom.d;
+  };
+in {
   # Home Manager needs a bit of information about you and the paths it should
   # manage.
   home.username = "dekengren";
@@ -20,7 +26,10 @@
   home.packages = [
     pkgs.git
     pkgs.openssh
-    pkgs.emacs
+    pkgs.ripgrep
+    pkgs.fd
+    pkgs.tmux
+    doom-emacs
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
     # # overrides. You can do that directly here, just don't forget the
@@ -36,6 +45,7 @@
     # '')
   ];
 
+
   programs.zsh = {
     enable = true;
     oh-my-zsh = {
@@ -44,29 +54,19 @@
         "git"
         "sudo"
       ];
-      # theme = "robbyrussell";
       theme = "agnoster";
     };
   };
 
-  programs.tmux.enable = true;
-  programs.tmux.terminal = "screen-256color";
-  programs.tmux.prefix = "´";
-  programs.tmux.keyMode = "vi";
-
   # Home Manager is pretty good at managing dotfiles. The primary way to manage
   # plain files is through 'home.file'.
   home.file = {
-    # # Building this configuration will create a copy of 'dotfiles/screenrc' in
-    # # the Nix store. Activating the configuration will then make '~/.screenrc' a
-    # # symlink to the Nix store copy.
-    # ".screenrc".source = dotfiles/screenrc;
-
     # # You can also set the file content immediately.
     # ".gradle/gradle.properties".text = ''
     #   org.gradle.console=verbose
     #   org.gradle.daemon.idletimeout=3600000
     # '';
+    ".tmux.conf".source = ./tmux.conf;
   };
 
   # You can also manage environment variables but you will have to manually
