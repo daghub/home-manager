@@ -48,6 +48,10 @@ in {
 
   programs.zsh = {
     enable = true;
+    sessionVariables = {
+       LC_ALL = "C.UTF-8";
+       LANG = "C.UTF-8";
+    };
     oh-my-zsh = {
       enable = true;
       plugins = [
