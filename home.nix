@@ -2,7 +2,7 @@
 
 let
   doom-emacs = pkgs.callPackage (builtins.fetchTarball {
-    url = https://github.com/nix-community/nix-doom-emacs/archive/master.tar.gz;
+    url = https://github.com/nix-community/nix-doom-emacs/archive/develop.tar.gz;
   }) {
     doomPrivateDir = ./doom.d;
   };
@@ -29,6 +29,10 @@ in {
     pkgs.ripgrep
     pkgs.fd
     pkgs.tmux
+    pkgs.python39
+    pkgs.python39Packages.python-lsp-server
+    pkgs.python39Packages.jedi-language-server
+    pkgs.python39Packages.flake8
     doom-emacs
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
