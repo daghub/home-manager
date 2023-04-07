@@ -29,10 +29,10 @@ in {
     pkgs.ripgrep
     pkgs.fd
     pkgs.tmux
-    pkgs.python39
-    pkgs.python39Packages.python-lsp-server
-    pkgs.python39Packages.jedi-language-server
-    pkgs.python39Packages.flake8
+    pkgs.python3
+    pkgs.python3Packages.python-lsp-server
+    pkgs.python3Packages.jedi-language-server
+    pkgs.python3Packages.flake8
     doom-emacs
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
