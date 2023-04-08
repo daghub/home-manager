@@ -25,6 +25,7 @@ in {
   # environment.
   home.packages = [
     pkgs.git
+    pkgs.tig
     pkgs.openssh
     pkgs.ripgrep
     pkgs.fd
