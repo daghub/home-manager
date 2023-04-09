@@ -34,6 +34,7 @@ in {
     pkgs.python3Packages.python-lsp-server
     pkgs.python3Packages.jedi-language-server
     pkgs.python3Packages.flake8
+    pkgs.zsh-powerlevel10k
     doom-emacs
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
@@ -81,6 +82,7 @@ in {
     #   org.gradle.daemon.idletimeout=3600000
     # '';
     ".tmux.conf".source = ./tmux.conf;
+    ".p10k.zsh".source = ./p10k.zsh;
   };
 
   # You can also manage environment variables but you will have to manually
@@ -95,6 +97,7 @@ in {
   # if you don't want to manage your shell through Home Manager.
   home.sessionVariables = {
     EDITOR = "emacs";
+    POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD = "true";
   };
 
   # Let Home Manager install and manage itself.
