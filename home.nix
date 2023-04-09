@@ -65,9 +65,11 @@ in {
       plugins = [
         "git"
         "sudo"
+        "fd"
+        "ripgrep"
       ];
-      theme = "agnoster";
     };
+    initExtra = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source .p10k.zsh";
   };
 
   # Home Manager is pretty good at managing dotfiles. The primary way to manage
