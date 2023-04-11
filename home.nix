@@ -78,6 +78,7 @@ in {
     keyMode = "vi";
     prefix = "`";
     terminal = "screen-256color";
+    mouse = true;
     extraConfig = ''
 bind -T copy-mode-vi v send -X begin-selection
 bind -n S-Up select-pane -L
