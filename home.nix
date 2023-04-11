@@ -29,7 +29,6 @@ in {
     pkgs.openssh
     pkgs.ripgrep
     pkgs.fd
-    pkgs.tmux
     pkgs.python3
     pkgs.python3Packages.python-lsp-server
     pkgs.python3Packages.jedi-language-server
@@ -73,6 +72,19 @@ in {
     initExtra = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source .p10k.zsh";
   };
 
+  programs.tmux = {
+    enable = true;
+    keyMode = "vi";
+    prefix = "`";
+    terminal = "screen-256color";
+    extraConfig = ''
+bind -n S-Up select-pane -L
+bind -n S-Down select-pane -R
+bind -n S-Left previous-window
+bind -n S-Right next-window
+    '';
+  };
+    
   # Home Manager is pretty good at managing dotfiles. The primary way to manage
   # plain files is through 'home.file'.
   home.file = {
@@ -81,7 +93,6 @@ in {
     #   org.gradle.console=verbose
     #   org.gradle.daemon.idletimeout=3600000
     # '';
-    ".tmux.conf".source = ./tmux.conf;
     ".p10k.zsh".source = ./p10k.zsh;
   };
 
