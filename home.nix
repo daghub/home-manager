@@ -67,6 +67,7 @@ in {
         "sudo"
         "fd"
         "ripgrep"
+        "tmux"
       ];
     };
     initExtra = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source .p10k.zsh";
@@ -76,7 +77,6 @@ in {
     enable = true;
     keyMode = "vi";
     prefix = "`";
-    terminal = "screen-256color";
     extraConfig = ''
 bind -n S-Up select-pane -L
 bind -n S-Down select-pane -R
