@@ -34,6 +34,7 @@ in {
     pkgs.python3Packages.jedi-language-server
     pkgs.python3Packages.flake8
     pkgs.zsh-powerlevel10k
+    pkgs.xsel
     doom-emacs
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
@@ -67,7 +68,6 @@ in {
         "sudo"
         "fd"
         "ripgrep"
-        "tmux"
       ];
     };
     initExtra = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source .p10k.zsh";
@@ -77,14 +77,17 @@ in {
     enable = true;
     keyMode = "vi";
     prefix = "`";
+    terminal = "screen-256color";
     extraConfig = ''
+bind -T copy-mode-vi v send -X begin-selection
 bind -n S-Up select-pane -L
 bind -n S-Down select-pane -R
 bind -n S-Left previous-window
 bind -n S-Right next-window
     '';
+    plugins = [ pkgs.tmuxPlugins.yank ];
   };
-    
+
   # Home Manager is pretty good at managing dotfiles. The primary way to manage
   # plain files is through 'home.file'.
   home.file = {
