@@ -26,6 +26,8 @@ in {
   home.packages = [
     pkgs.git
     pkgs.tig
+    pkgs.htop
+    pkgs.bmon
     pkgs.openssh
     pkgs.ripgrep
     pkgs.fd
