@@ -28,6 +28,7 @@ in {
     pkgs.tig
     pkgs.htop
     pkgs.bmon
+    pkgs.direnv
     pkgs.openssh
     pkgs.ripgrep
     pkgs.fd
@@ -70,6 +71,8 @@ in {
         "sudo"
         "fd"
         "ripgrep"
+        "direnv"
+        "pyenv"
       ];
     };
     initExtra = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source .p10k.zsh";
