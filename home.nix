@@ -37,6 +37,7 @@ in {
     pkgs.python3Packages.jedi-language-server
     pkgs.python3Packages.flake8
     pkgs.zsh-powerlevel10k
+    pkgs.bazel-buildtools
     pkgs.xsel
     doom-emacs
 
