@@ -46,6 +46,13 @@
 (global-clipetty-mode 1)
 (xclip-mode 1)
 
+(setq auto-mode-alist (append
+        '(("BUILD\\'" . bazel-build-mode))
+        '(("WORKSPACE\\'" . bazel-workspace-mode))
+        '(("\\.BUILD\\'" . bazel-mode))
+        '(("\\.bzl\\'" . bazel-starlark-mode))
+        auto-mode-alist)
+)
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
 ;; `after!' block, otherwise Doom's defaults may override your settings. E.g.
 ;;
