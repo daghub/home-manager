@@ -33,12 +33,13 @@ in {
     pkgs.ripgrep
     pkgs.fd
     pkgs.python3
-    pkgs.python3Packages.python-lsp-server
+    # pkgs.python3Packages.python-lsp-server
     pkgs.python3Packages.jedi-language-server
     pkgs.python3Packages.flake8
     pkgs.zsh-powerlevel10k
     pkgs.bazel-buildtools
     pkgs.xsel
+    pkgs.nodePackages.pyright
     doom-emacs
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
