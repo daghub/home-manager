@@ -53,6 +53,11 @@
         '(("\\.bzl\\'" . bazel-starlark-mode))
         auto-mode-alist)
 )
+
+(with-eval-after-load 'lsp-mode
+  (add-to-list 'lsp-file-watch-ignored-directories "[/\\\\]bazel-.*\\'")
+)
+
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
 ;; `after!' block, otherwise Doom's defaults may override your settings. E.g.
 ;;
