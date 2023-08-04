@@ -51,6 +51,7 @@
         '(("WORKSPACE\\'" . bazel-workspace-mode))
         '(("\\.BUILD\\'" . bazel-mode))
         '(("\\.bzl\\'" . bazel-starlark-mode))
+        '(("\\.bazelrc\\'" . bazelrc-mode))
         auto-mode-alist)
 )
 
