@@ -95,6 +95,8 @@ bind -n S-Up select-pane -L
 bind -n S-Down select-pane -R
 bind -n S-Left previous-window
 bind -n S-Right next-window
+# No delay for escape key press
+set -sg escape-time 0
     '';
     plugins = [ pkgs.tmuxPlugins.yank ];
   };
