@@ -91,6 +91,7 @@ in {
 # See https://github.com/spudlyo/clipetty#dealing-with-a-stale-ssh_tty-environment-variable
 set -ag update-environment "SSH_TTY"
 set -s set-clipboard on
+setw -g aggressive-resize on
 bind -T copy-mode-vi v send -X begin-selection
 bind -n S-Up select-pane -L
 bind -n S-Down select-pane -R
