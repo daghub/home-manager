@@ -1,17 +1,22 @@
 { config, pkgs, ... }:
-
-let
-  doom-emacs = pkgs.callPackage (builtins.fetchTarball {
-    url = https://github.com/nix-community/nix-doom-emacs/archive/develop.tar.gz;
-  }) {
-    doomPrivateDir = ./doom.d;
-  };
-in {
+{
   # Home Manager needs a bit of information about you and the paths it should
   # manage.
   home.username = "dekengren";
   home.homeDirectory = "/home/dekengren";
 
+  xdg.enable = true;
+  xdg.configFile = {
+    ".emacs.d" = {
+        source = builtins.fetchGit {
+          url = "https://github.com/hlissner/doom-emacs";
+          rev = "2be3cf4b38251eae13cba5daf6ae5bb6964de4a4";
+        };
+      };
+     "${config.home.sessionVariables.DOOMDIR}/config.el".source = ./doom.d/config.el;
+     "${config.home.sessionVariables.DOOMDIR}/init.el".source = ./doom.d/init.el;
+     "${config.home.sessionVariables.DOOMDIR}/packages.el".source = ./doom.d/packages.el;
+  };
   # This value determines the Home Manager release that your configuration is
   # compatible with. This helps avoid breakage when a new Home Manager release
   # introduces backwards incompatible changes.
@@ -41,7 +46,8 @@ in {
     pkgs.go
     pkgs.gopls
     pkgs.nodePackages.pyright
-    doom-emacs
+    # doom-emacs
+    pkgs.emacs
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
     # # overrides. You can do that directly here, just don't forget the
@@ -127,6 +133,8 @@ set -sg escape-time 0
   home.sessionVariables = {
     EDITOR = "emacs";
     POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD = "true";
+    DOOMDIR = "${config.xdg.configHome}/doom-config";
+    DOOMLOCALDIR = "${config.xdg.configHome}/doom-local";
   };
 
   # Let Home Manager install and manage itself.
