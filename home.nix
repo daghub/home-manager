@@ -46,8 +46,8 @@
     pkgs.go
     pkgs.gopls
     pkgs.nodePackages.pyright
-    # doom-emacs
     pkgs.emacs
+    pkgs.cloc
 
     # # It is sometimes useful to fine-tune packages, for example, by applying
     # # overrides. You can do that directly here, just don't forget the
