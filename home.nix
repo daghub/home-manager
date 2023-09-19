@@ -45,6 +45,7 @@
     pkgs.gopls
     pkgs.pyright
     pkgs.emacs
+    pkgs.cloc
   ];
 
 
