@@ -55,9 +55,6 @@
        LC_ALL = "C.UTF-8";
        LANG = "C.UTF-8";
     };
-    shellAliases = {
-       emacs = "emacs -nw";
-    };
     oh-my-zsh = {
       enable = true;
       plugins = [
