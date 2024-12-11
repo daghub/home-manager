@@ -1,16 +1,19 @@
 { config, pkgs, ... }:
 
-let
-  doom-emacs = pkgs.callPackage (builtins.fetchTarball {
-    url = https://github.com/nix-community/nix-doom-emacs/archive/develop.tar.gz;
-  }) {
-    doomPrivateDir = ./doom.d;
-  };
-in {
+{
   # Home Manager needs a bit of information about you and the paths it should
   # manage.
-  home.username = "dekengren";
-  home.homeDirectory = "/home/dekengren";
+  home = {
+    username = "dekengren";
+    homeDirectory = "/home/dekengren";
+    sessionPath = [ "${config.xdg.configHome}/emacs/bin" ];
+    sessionVariables = {
+      DOOMDIR = "${config.xdg.configHome}/doom-config";
+      DOOMLOCALDIR = "${config.xdg.configHome}/doom-local";
+      EDITOR = "emacs";
+      POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD = "true";
+    };
+  };
 
   # This value determines the Home Manager release that your configuration is
   # compatible with. This helps avoid breakage when a new Home Manager release
@@ -40,21 +43,8 @@ in {
     pkgs.xsel
     pkgs.go
     pkgs.gopls
-    pkgs.nodePackages.pyright
-    doom-emacs
-
-    # # It is sometimes useful to fine-tune packages, for example, by applying
-    # # overrides. You can do that directly here, just don't forget the
-    # # parentheses. Maybe you want to install Nerd Fonts with a limited number of
-    # # fonts?
-    # (pkgs.nerdfonts.override { fonts = [ "FantasqueSansMono" ]; })
-
-    # # You can also create simple shell scripts directly inside your
-    # # configuration. For example, this adds a command 'my-hello' to your
-    # # environment:
-    # (pkgs.writeShellScriptBin "my-hello" ''
-    #   echo "Hello, ${config.home.username}!"
-    # '')
+    pkgs.pyright
+    pkgs.emacs
   ];
 
 
@@ -72,8 +62,6 @@ in {
       plugins = [
         "git"
         "sudo"
-        "fd"
-        "ripgrep"
         "direnv"
         "pyenv"
       ];
@@ -106,27 +94,31 @@ set -sg escape-time 0
   # Home Manager is pretty good at managing dotfiles. The primary way to manage
   # plain files is through 'home.file'.
   home.file = {
-    # # You can also set the file content immediately.
-    # ".gradle/gradle.properties".text = ''
-    #   org.gradle.console=verbose
-    #   org.gradle.daemon.idletimeout=3600000
-    # '';
     ".p10k.zsh".source = ./p10k.zsh;
   };
 
-  # You can also manage environment variables but you will have to manually
-  # source
-  #
-  #  ~/.nix-profile/etc/profile.d/hm-session-vars.sh
-  #
-  # or
-  #
-  #  /etc/profiles/per-user/dekengren/etc/profile.d/hm-session-vars.sh
-  #
-  # if you don't want to manage your shell through Home Manager.
-  home.sessionVariables = {
-    EDITOR = "emacs";
-    POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD = "true";
+  xdg = {
+    enable = true;
+    configFile = {
+      "doom-config/config.el".source = doom.d/config.el;
+      "doom-config/init.el".source = doom.d/init.el;
+      "doom-config/packages.el".source = doom.d/packages.el;
+      "emacs" = {
+        source = builtins.fetchGit {
+          url = "https://github.com/hlissner/doom-emacs";
+          rev = "ba1dca322f9a07bc2b7bec6a98f2c3c55c0bbd77";
+        };
+        onChange = "${pkgs.writeShellScript "doom-change" ''
+          export DOOMDIR="${config.home.sessionVariables.DOOMDIR}"
+          export DOOMLOCALDIR="${config.home.sessionVariables.DOOMLOCALDIR}"
+          if [ ! -d "$DOOMLOCALDIR" ]; then
+            ${config.xdg.configHome}/emacs/bin/doom -y install
+          else
+            ${config.xdg.configHome}/emacs/bin/doom -y sync -u
+          fi
+        ''}";
+      };
+    };
   };
 
   # Let Home Manager install and manage itself.
