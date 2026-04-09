@@ -6,7 +6,10 @@
   home = {
     username = "dekengren";
     homeDirectory = "/home/dekengren";
-    sessionPath = [ "${config.xdg.configHome}/emacs/bin" ];
+    sessionPath = [
+      "${config.xdg.configHome}/emacs/bin"
+      "${config.home.homeDirectory}/.local/bin"
+    ];
     sessionVariables = {
       DOOMDIR = "${config.xdg.configHome}/doom-config";
       DOOMLOCALDIR = "${config.xdg.configHome}/doom-local";
