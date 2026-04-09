@@ -1,8 +1,22 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   # Home Manager needs a bit of information about you and the paths it should
   # manage.
+  #
+  # To install / upgrade doom emacs after home-manager switch:
+  #  source ~/.nix-profile/etc/profile.d/hm-session-vars.sh
+  #  git clone https://github.com/doomemacs/doomemacs.git ~/.config/emacs
+  #  doom install
+  #
+  # If there is a straight / lisp error:
+  #   find "$DOOMLOCALDIR" -type d -name straight -prune -exec rm -rf {} + 2>/dev/null
+  #
+  # Then try again:
+  #    doom install
+  #
+  # If only config (*.el files) in home.nix changed:
+  #    doom sync
   home = {
     username = "dekengren";
     homeDirectory = "/home/dekengren";
@@ -11,8 +25,13 @@
       "${config.home.homeDirectory}/.local/bin"
     ];
     sessionVariables = {
+      # Your elisp config (Home Manager → ~/.config/doom-config/)
       DOOMDIR = "${config.xdg.configHome}/doom-config";
-      DOOMLOCALDIR = "${config.xdg.configHome}/doom-local";
+      # Manual `git clone` of github.com/doomemacs/doomemacs → ~/.config/emacs
+      EMACSDIR = "${config.xdg.configHome}/emacs";
+      # Keep mutable Straight/profile data out of the clone; standard Nix+Habit
+      DOOMLOCALDIR = "${config.xdg.dataHome}/doom";
+      DOOMPROFILELOADFILE = "${config.xdg.stateHome}/doom-profiles-load.el";
       EDITOR = "emacs";
       POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD = "true";
     };
@@ -104,23 +123,17 @@ set -sg escape-time 0
       "doom-config/config.el".source = doom.d/config.el;
       "doom-config/init.el".source = doom.d/init.el;
       "doom-config/packages.el".source = doom.d/packages.el;
-      "emacs" = {
-        source = builtins.fetchGit {
-          url = "https://github.com/hlissner/doom-emacs";
-          rev = "ba1dca322f9a07bc2b7bec6a98f2c3c55c0bbd77";
-        };
-        onChange = "${pkgs.writeShellScript "doom-change" ''
-          export DOOMDIR="${config.home.sessionVariables.DOOMDIR}"
-          export DOOMLOCALDIR="${config.home.sessionVariables.DOOMLOCALDIR}"
-          if [ ! -d "$DOOMLOCALDIR" ]; then
-            ${config.xdg.configHome}/emacs/bin/doom -y install
-          else
-            ${config.xdg.configHome}/emacs/bin/doom -y sync -u
-          fi
-        ''}";
-      };
     };
   };
+  #
+  # After DOOMDIR is written, refresh profile/autoloads when `doom` exists.
+  # Ignores failures until you’ve run `doom install` once.
+  home.activation.doomSync = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    doom="${config.xdg.configHome}/emacs/bin/doom"
+    if [ -x "$doom" ]; then
+      "$doom" sync --force || true
+    fi
+  '';
 
   # Let Home Manager install and manage itself.
   programs.home-manager.enable = true;
