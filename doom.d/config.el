@@ -43,7 +43,8 @@
 (setq org-directory "~/org/")
 
 ;; Enable clipetty everywhere. This should not be needed, but it.
-(global-clipetty-mode 1)
+(after! clipetty
+  (global-clipetty-mode 1))
 (xclip-mode 1)
 
 (setq auto-mode-alist (append
