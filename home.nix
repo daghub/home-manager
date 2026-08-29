@@ -34,6 +34,7 @@
       DOOMPROFILELOADFILE = "${config.xdg.stateHome}/doom-profiles-load.el";
       EDITOR = "emacs";
       POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD = "true";
+      NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.local";
     };
   };
 
@@ -68,11 +69,14 @@
     pkgs.pyright
     pkgs.emacs
     pkgs.cloc
+    pkgs.et
+    pkgs.nodejs
   ];
 
 
   programs.zsh = {
     enable = true;
+    dotDir = config.home.homeDirectory;
     sessionVariables = {
        LC_ALL = "C.UTF-8";
        LANG = "C.UTF-8";
@@ -86,7 +90,7 @@
         "pyenv"
       ];
     };
-    initExtra = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source ~/.p10k.zsh";
+    initContent = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source ~/.p10k.zsh";
   };
 
   programs.tmux = {

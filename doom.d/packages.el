@@ -50,3 +50,13 @@
 ;(unpin! pinned-package another-pinned-package)
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
 ;(unpin! t)
+
+(package! shell-maker)
+(package! acp)
+(package! agent-shell)
+
+(package! agent-shell-hq
+  :recipe (:host nil
+           :repo "https://github.com/SreenivasVRao/agent-shell-hq"
+           :branch "master"
+           :files ("*.el")))
