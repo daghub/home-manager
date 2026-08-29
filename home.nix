@@ -63,6 +63,11 @@
        LC_ALL = "C.UTF-8";
        LANG = "C.UTF-8";
     };
+    profileExtra = ''
+      if [ -e "${config.home.homeDirectory}/.nix-profile/etc/profile.d/nix.sh" ]; then
+        . "${config.home.homeDirectory}/.nix-profile/etc/profile.d/nix.sh"
+      fi
+    '';
     oh-my-zsh = {
       enable = true;
       plugins = [
