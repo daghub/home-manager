@@ -80,6 +80,12 @@
   (setq codex-ide-cli-path (or (executable-find "codex") "codex")
         codex-ide-new-session-split 'vertical))
 
+(after! codex-ide-renderer
+  ;; Keep Codex sessions visible when opening file links from transcript text.
+  (advice-add #'codex-ide-renderer-open-file-link
+              :override
+              #'codex-ide-renderer-open-file-link-other-window))
+
 ;; These views are autoloaded directly by their leader commands.  Use an Evil
 ;; buffer-local map in their mode hooks, so Doom's global normal-state `RET'
 ;; binding cannot take precedence over the picker action.
@@ -154,6 +160,81 @@
 
 (add-hook 'codex-ide-status-mode-hook #'dek/codex-ide-status-rename-binding)
 
+(defun dek/codex-ide--thread-short-id (thread)
+  "Return a short display id for THREAD."
+  (let ((thread-id (alist-get 'id thread)))
+    (if (stringp thread-id)
+        (substring thread-id 0 (min 8 (length thread-id)))
+      "")))
+
+(defun dek/codex-ide--thread-display-title (thread)
+  "Return a title for THREAD."
+  (or (alist-get 'name thread)
+      (alist-get 'title thread)
+      (alist-get 'preview thread)
+      "Untitled"))
+
+(defun dek/codex-ide--thread-display-time (thread)
+  "Return a display timestamp for THREAD."
+  (let ((timestamp (or (alist-get 'updatedAt thread)
+                       (alist-get 'createdAt thread))))
+    (if (and timestamp (fboundp 'codex-ide--format-thread-updated-at))
+        (codex-ide--format-thread-updated-at timestamp)
+      "")))
+
+(defun dek/codex-ide--all-codex-threads (&optional page-limit)
+  "Return Codex threads across all projects."
+  (codex-ide--prepare-session-operations)
+  (let* ((session (codex-ide--ensure-query-session-for-thread-selection
+                   (codex-ide--get-working-directory)))
+         (page-limit (or page-limit codex-ide-thread-list-default-limit))
+         (cursor nil)
+         (threads nil)
+         (done nil))
+    (while (not done)
+      (let* ((params (append `((limit . ,page-limit)
+                               (sortKey . "updated_at")
+                               (sortDirection . "desc"))
+                             (when cursor
+                               `((cursor . ,cursor)))))
+             (result (codex-ide--request-sync session "thread/list" params))
+             (data (append (alist-get 'data result) nil)))
+        (setq threads (append threads data))
+        (setq cursor (alist-get 'nextCursor result))
+        (unless cursor
+          (setq done t))))
+    threads))
+
+(defun dek/codex-ide--all-thread-candidates (threads)
+  "Return completion candidates for THREADS."
+  (mapcar
+   (lambda (thread)
+     (let* ((cwd (or (alist-get 'cwd thread) ""))
+            (label (format "%s  [%s]  %s  %s"
+                           (dek/codex-ide--thread-display-time thread)
+                           (dek/codex-ide--thread-short-id thread)
+                           (dek/codex-ide--thread-display-title thread)
+                           (abbreviate-file-name cwd))))
+       (cons label thread)))
+   threads))
+
+(defun dek/codex-ide-resume-any-session ()
+  "Resume a stored Codex session from any recorded project."
+  (interactive)
+  (require 'codex-ide)
+  (require 'codex-ide-threads)
+  (let* ((threads (dek/codex-ide--all-codex-threads))
+         (choices (dek/codex-ide--all-thread-candidates threads)))
+    (unless choices
+      (user-error "No Codex threads found"))
+    (let* ((choice (completing-read "Resume Codex thread: " choices nil t))
+           (thread (cdr (assoc choice choices)))
+           (thread-id (alist-get 'id thread))
+           (cwd (alist-get 'cwd thread)))
+      (unless (and thread-id cwd)
+        (user-error "Selected Codex thread is missing id or cwd"))
+      (codex-ide--show-or-resume-thread thread-id cwd))))
+
 (after! codex-ide-session-mode
   (map! :map codex-ide-session-mode-map
         :localleader
@@ -168,6 +249,7 @@
       :desc "Continue latest session" "c" #'codex-ide-continue
       :desc "Codex menu"               "m" #'codex-ide-menu
       :desc "Project session history" "s" #'codex-ide-status
+      :desc "All Codex sessions"      "S" #'dek/codex-ide-resume-any-session
       :desc "Live Codex sessions"     "l" #'codex-ide-session-buffer-list
       :desc "Current project session" "b" #'codex-ide-switch-to-buffer
       :desc "Rename Codex session"    "r" #'dek/codex-ide-rename-session
