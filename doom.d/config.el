@@ -78,27 +78,83 @@
   ;; Resolve the executable through the active Home Manager session instead of
   ;; baking a Nix store path into the configuration.
   (setq codex-ide-cli-path (or (executable-find "codex") "codex")
-        codex-ide-new-session-split 'vertical)
+        codex-ide-new-session-split 'vertical))
 
-  ;; The upstream package uses ordinary local maps.  Define the important
-  ;; actions explicitly for Doom's Evil normal state.
-  (require 'codex-ide-status-mode)
-  (require 'codex-ide-session-buffer-list)
-  (evil-define-key* 'normal codex-ide-status-mode-map
-    "j" #'next-line
-    "k" #'previous-line
-    "n" #'codex-ide-status-mode-nav-forward
-    "p" #'codex-ide-status-mode-nav-backward
-    "RET" #'codex-ide-status-mode-display-session-at-point
-    "TAB" #'codex-ide-section-toggle-at-point
-    "g" #'codex-ide-status-mode-refresh
-    "D" #'codex-ide-status-mode-delete-thing-at-point
-    "K" #'codex-ide-status-mode-kill-buffer-at-point)
-  (evil-define-key* 'normal codex-ide-session-buffer-list-mode-map
-    "RET" #'codex-ide-session-list-display-session-at-point
-    "g" #'codex-ide-session-buffer-list-redisplay
-    "K" #'codex-ide-session-buffer-list-delete-buffer)
+;; These views are autoloaded directly by their leader commands.  Use an Evil
+;; buffer-local map in their mode hooks, so Doom's global normal-state `RET'
+;; binding cannot take precedence over the picker action.
+(defun dek/codex-ide-status-evil-bindings ()
+  (evil-local-set-key 'normal (kbd "j") #'next-line)
+  (evil-local-set-key 'normal (kbd "k") #'previous-line)
+  (evil-local-set-key 'normal (kbd "n") #'codex-ide-status-mode-nav-forward)
+  (evil-local-set-key 'normal (kbd "p") #'codex-ide-status-mode-nav-backward)
+  (evil-local-set-key 'normal (kbd "RET") #'codex-ide-status-mode-display-session-at-point)
+  (evil-local-set-key 'normal (kbd "TAB") #'codex-ide-section-toggle-at-point)
+  (evil-local-set-key 'normal (kbd "g") #'codex-ide-status-mode-refresh)
+  (evil-local-set-key 'normal (kbd "D") #'codex-ide-status-mode-delete-thing-at-point)
+  (evil-local-set-key 'normal (kbd "K") #'codex-ide-status-mode-kill-buffer-at-point))
 
+(defun dek/codex-ide-session-buffer-list-evil-bindings ()
+  (evil-local-set-key 'normal (kbd "RET") #'codex-ide-session-list-display-session-at-point)
+  (evil-local-set-key 'normal (kbd "g") #'codex-ide-session-buffer-list-redisplay)
+  (evil-local-set-key 'normal (kbd "K") #'codex-ide-session-buffer-list-delete-buffer))
+
+(add-hook 'codex-ide-status-mode-hook #'dek/codex-ide-status-evil-bindings)
+(add-hook 'codex-ide-session-buffer-list-mode-hook
+          #'dek/codex-ide-session-buffer-list-evil-bindings)
+
+(defun dek/codex-ide-session-evil-bindings ()
+  "Use chat-style prompt submission in Codex session buffers."
+  (evil-local-set-key 'normal (kbd "RET") #'codex-ide-submit)
+  (evil-local-set-key 'insert (kbd "RET") #'codex-ide-submit)
+  (evil-local-set-key 'insert (kbd "S-<return>") #'newline))
+
+(add-hook 'codex-ide-session-mode-hook #'dek/codex-ide-session-evil-bindings)
+
+(defun dek/codex-ide--set-thread-name (session thread-id default-name)
+  "Prompt for and persist a human-readable name for THREAD-ID."
+  (let ((name (string-trim (read-string "Rename Codex session: " default-name))))
+    (when (string-empty-p name)
+      (user-error "Codex session names cannot be empty"))
+    (codex-ide--request-sync session "thread/name/set"
+                             `((threadId . ,thread-id) (name . ,name)))
+    (message "Renamed Codex session to: %s" name)))
+
+(defun dek/codex-ide-rename-session ()
+  "Rename the current Codex session or the stored thread at point."
+  (interactive)
+  (if (derived-mode-p 'codex-ide-status-mode)
+      (let* ((section (codex-ide-status-mode--actionable-section-at-point))
+             (value (codex-ide-section-value section))
+             (thread (if (eq (codex-ide-section-type section) 'thread)
+                         value
+                       nil))
+             (session (if thread
+                          (codex-ide--ensure-query-session-for-thread-selection
+                           codex-ide-status-mode--directory)
+                        value))
+             (thread-id (if thread
+                            (alist-get 'id thread)
+                          (codex-ide-session-thread-id session)))
+             (default-name (or (and thread (alist-get 'name thread))
+                               (and thread (alist-get 'preview thread))
+                               "")))
+        (unless thread-id
+          (user-error "The selected Codex session has no thread ID"))
+        (dek/codex-ide--set-thread-name session thread-id default-name)
+        (codex-ide-status-mode-refresh))
+    (let* ((session (codex-ide--get-default-session-for-current-buffer))
+           (thread-id (and session (codex-ide-session-thread-id session))))
+      (unless thread-id
+        (user-error "No Codex session is associated with this buffer"))
+      (dek/codex-ide--set-thread-name session thread-id ""))))
+
+(defun dek/codex-ide-status-rename-binding ()
+  (evil-local-set-key 'normal (kbd "r") #'dek/codex-ide-rename-session))
+
+(add-hook 'codex-ide-status-mode-hook #'dek/codex-ide-status-rename-binding)
+
+(after! codex-ide-session-mode
   (map! :map codex-ide-session-mode-map
         :localleader
         :desc "Codex menu" "m" #'codex-ide-menu
@@ -114,6 +170,7 @@
       :desc "Project session history" "s" #'codex-ide-status
       :desc "Live Codex sessions"     "l" #'codex-ide-session-buffer-list
       :desc "Current project session" "b" #'codex-ide-switch-to-buffer
+      :desc "Rename Codex session"    "r" #'dek/codex-ide-rename-session
       :desc "Session diff"             "d" #'codex-ide-session-diff-open
       :desc "Interrupt active turn"    "k" #'codex-ide-interrupt)
 

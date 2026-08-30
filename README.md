@@ -99,6 +99,9 @@ The main commands are available under `SPC a`:
 
 In the project history view, use Evil `j`/`k` to move, `n`/`p` between session
 entries, `RET` to open or resume a session, `TAB` to expand details, `g` to
-refresh, `D` to delete a stored thread, and `K` to close a live buffer. Inside
-a Codex session, `SPC m m` opens its menu, `SPC m d` opens its diff, and
-`SPC m k` interrupts its active turn. Prompts are submitted with `C-c RET`.
+refresh, `r` to rename a stored thread, `D` to delete a stored thread, and `K`
+to close a live buffer. `SPC a r` renames the current session from any Codex
+view. Inside a Codex session, `SPC m m` opens its menu, `SPC m d` opens its diff, and
+`SPC m k` interrupts its active turn. `RET` submits prompts; `Shift+RET`
+inserts a newline. The upstream `C-c RET` submit binding also remains
+available.
