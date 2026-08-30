@@ -54,4 +54,9 @@
 
 (package! shell-maker)
 (package! acp)
+;; Retained only so switching back to `main' needs no additional `doom sync'.
+;; This branch does not configure or bind Agent Shell.
 (package! agent-shell)
+
+(package! codex-ide
+  :recipe (:host github :repo "dgillis/emacs-codex-ide"))

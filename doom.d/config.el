@@ -60,33 +60,62 @@
   (add-to-list 'lsp-file-watch-ignored-directories "[/\\\\]bazel-.*\\'")
 )
 
-;; Codex sessions in Doom ----------------------------------------------------
+;; Codex IDE -----------------------------------------------------------------
+;;
+;; This branch uses the native Codex app-server client, rather than Agent
+;; Shell.  Codex remains the owner of the durable thread history.
 
-(use-package! agent-shell
-  :commands (agent-shell
-             agent-shell-toggle
-             agent-shell-help-menu
-             agent-shell-openai-start-codex)
+(use-package! codex-ide
+  :commands (codex-ide
+             codex-ide-continue
+             codex-ide-menu
+             codex-ide-status
+             codex-ide-switch-to-buffer
+             codex-ide-session-buffer-list
+             codex-ide-session-diff-open
+             codex-ide-interrupt)
   :config
-  ;; Let the session picker offer a new session or a server-side Codex resume.
-  ;; `last' restores enough context to recognize a resumed chat without
-  ;; replaying its entire transcript into the buffer.
-  (setq agent-shell-session-strategy 'prompt
-        agent-shell-session-restore-verbosity 'last
-        agent-shell-preferred-agent-config '(preselect . codex)))
+  ;; Resolve the executable through the active Home Manager session instead of
+  ;; baking a Nix store path into the configuration.
+  (setq codex-ide-cli-path (or (executable-find "codex") "codex")
+        codex-ide-new-session-split 'vertical)
 
-(defun dek/agent-shell-start-codex ()
-  "Start a Codex Agent Shell, prompting to resume when available."
-  (interactive)
-  (require 'agent-shell)
-  (agent-shell-openai-start-codex))
+  ;; The upstream package uses ordinary local maps.  Define the important
+  ;; actions explicitly for Doom's Evil normal state.
+  (require 'codex-ide-status-mode)
+  (require 'codex-ide-session-buffer-list)
+  (evil-define-key* 'normal codex-ide-status-mode-map
+    "j" #'next-line
+    "k" #'previous-line
+    "n" #'codex-ide-status-mode-nav-forward
+    "p" #'codex-ide-status-mode-nav-backward
+    "RET" #'codex-ide-status-mode-display-session-at-point
+    "TAB" #'codex-ide-section-toggle-at-point
+    "g" #'codex-ide-status-mode-refresh
+    "D" #'codex-ide-status-mode-delete-thing-at-point
+    "K" #'codex-ide-status-mode-kill-buffer-at-point)
+  (evil-define-key* 'normal codex-ide-session-buffer-list-mode-map
+    "RET" #'codex-ide-session-list-display-session-at-point
+    "g" #'codex-ide-session-buffer-list-redisplay
+    "K" #'codex-ide-session-buffer-list-delete-buffer)
+
+  (map! :map codex-ide-session-mode-map
+        :localleader
+        :desc "Codex menu" "m" #'codex-ide-menu
+        :desc "Session diff" "d" #'codex-ide-session-diff-open
+        :desc "Interrupt turn" "k" #'codex-ide-interrupt
+        :desc "Toggle detail" "v" #'codex-ide-session-transcript-toggle-detail-level))
 
 (map! :leader
       :prefix ("a" . "agents")
-      :desc "Start or reuse agent"         "a" #'agent-shell
-      :desc "New or resume Codex session"  "n" #'dek/agent-shell-start-codex
-      :desc "Toggle current agent"         "t" #'agent-shell-toggle
-      :desc "Agent commands"               "?" #'agent-shell-help-menu)
+      :desc "New Codex session"       "n" #'codex-ide
+      :desc "Continue latest session" "c" #'codex-ide-continue
+      :desc "Codex menu"               "m" #'codex-ide-menu
+      :desc "Project session history" "s" #'codex-ide-status
+      :desc "Live Codex sessions"     "l" #'codex-ide-session-buffer-list
+      :desc "Current project session" "b" #'codex-ide-switch-to-buffer
+      :desc "Session diff"             "d" #'codex-ide-session-diff-open
+      :desc "Interrupt active turn"    "k" #'codex-ide-interrupt)
 
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
 ;; `after!' block, otherwise Doom's defaults may override your settings. E.g.
