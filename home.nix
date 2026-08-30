@@ -65,6 +65,8 @@
        NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.local";
     };
     profileExtra = ''
+      export NPM_CONFIG_PREFIX="${config.home.homeDirectory}/.local"
+      export PATH="${config.home.homeDirectory}/.local/bin:$PATH"
       if [ -e "${config.home.homeDirectory}/.nix-profile/etc/profile.d/nix.sh" ]; then
         . "${config.home.homeDirectory}/.nix-profile/etc/profile.d/nix.sh"
       fi
