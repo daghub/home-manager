@@ -51,7 +51,7 @@
     pkgs.pyright
     pkgs.emacs
     pkgs.cloc
-    pkgs.et
+    pkgs.eternal-terminal
     pkgs.nodejs
   ];
 
