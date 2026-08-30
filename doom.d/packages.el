@@ -55,9 +55,3 @@
 (package! shell-maker)
 (package! acp)
 (package! agent-shell)
-
-(package! agent-shell-hq
-  :recipe (:host nil
-           :repo "https://github.com/SreenivasVRao/agent-shell-hq"
-           :branch "master"
-           :files ("*.el")))

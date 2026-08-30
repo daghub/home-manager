@@ -60,6 +60,34 @@
   (add-to-list 'lsp-file-watch-ignored-directories "[/\\\\]bazel-.*\\'")
 )
 
+;; Codex sessions in Doom ----------------------------------------------------
+
+(use-package! agent-shell
+  :commands (agent-shell
+             agent-shell-toggle
+             agent-shell-help-menu
+             agent-shell-openai-start-codex)
+  :config
+  ;; Let the session picker offer a new session or a server-side Codex resume.
+  ;; `last' restores enough context to recognize a resumed chat without
+  ;; replaying its entire transcript into the buffer.
+  (setq agent-shell-session-strategy 'prompt
+        agent-shell-session-restore-verbosity 'last
+        agent-shell-preferred-agent-config '(preselect . codex)))
+
+(defun dek/agent-shell-start-codex ()
+  "Start a Codex Agent Shell, prompting to resume when available."
+  (interactive)
+  (require 'agent-shell)
+  (agent-shell-openai-start-codex))
+
+(map! :leader
+      :prefix ("a" . "agents")
+      :desc "Start or reuse agent"         "a" #'agent-shell
+      :desc "New or resume Codex session"  "n" #'dek/agent-shell-start-codex
+      :desc "Toggle current agent"         "t" #'agent-shell-toggle
+      :desc "Agent commands"               "?" #'agent-shell-help-menu)
+
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
 ;; `after!' block, otherwise Doom's defaults may override your settings. E.g.
 ;;

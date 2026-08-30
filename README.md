@@ -66,3 +66,9 @@ doom doctor
 If `doom` is not available by name in the current shell, use
 `~/.config/emacs/bin/doom` or open a new terminal after Home Manager has been
 activated.
+
+### Codex sessions in Doom
+
+Agent Shell provides the Codex client. Use `SPC a n` to start a Codex session
+or select a session to resume; `SPC a t` toggles the current Agent Shell
+buffer. Codex itself remains the source of truth for its saved sessions.
