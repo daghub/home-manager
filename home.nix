@@ -62,6 +62,7 @@
     sessionVariables = {
        LC_ALL = "C.UTF-8";
        LANG = "C.UTF-8";
+       NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.local";
     };
     profileExtra = ''
       if [ -e "${config.home.homeDirectory}/.nix-profile/etc/profile.d/nix.sh" ]; then
