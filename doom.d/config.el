@@ -42,10 +42,61 @@
 ;; change `org-directory'. It must be set before org loads!
 (setq org-directory "~/org/")
 
-;; Enable clipetty everywhere. This should not be needed, but it.
+(defun dek/tmux-clipboard-copy (text)
+  "Copy TEXT to the outer clipboard through tmux."
+  (let ((tmux (executable-find "tmux")))
+    (if (not tmux)
+        (message "tmux clipboard copy failed: tmux not found")
+      (let ((output (generate-new-buffer " *tmux clipboard*")))
+        (unwind-protect
+            (with-temp-buffer
+              (insert text)
+              (let ((exit-code
+                     (call-process-region
+                      (point-min)
+                      (point-max)
+                      tmux
+                      nil
+                      output
+                      nil
+                      "load-buffer"
+                      "-w"
+                      "-")))
+                (unless (zerop exit-code)
+                  (message "tmux clipboard copy failed: %s"
+                           (with-current-buffer output
+                             (string-trim (buffer-string)))))))
+          (when (buffer-live-p output)
+            (kill-buffer output)))))
+    text))
+
+(define-minor-mode dek/tmux-clipboard-mode
+  "Send clipboard copies from this buffer through tmux."
+  :lighter " TmuxClip"
+  (if dek/tmux-clipboard-mode
+      (progn
+        (when (bound-and-true-p clipetty-mode)
+          (clipetty-mode -1))
+        (setq-local interprogram-cut-function #'dek/tmux-clipboard-copy))
+    (when (eq interprogram-cut-function #'dek/tmux-clipboard-copy)
+      (kill-local-variable 'interprogram-cut-function))))
+
+(define-globalized-minor-mode dek/global-tmux-clipboard-mode
+  dek/tmux-clipboard-mode
+  (lambda ()
+    (when (and (not (display-graphic-p))
+               (getenv "TMUX" (selected-frame)))
+      (dek/tmux-clipboard-mode +1))))
+
+;; TTY Emacs over SSH/tmux: copy via OSC 52 to the outer terminal.
 (after! clipetty
-  (global-clipetty-mode 1))
-(xclip-mode 1)
+  (setq clipetty-assume-nested-mux t)
+  (if (and (not (display-graphic-p))
+           (getenv "TMUX" (selected-frame)))
+      (progn
+        (global-clipetty-mode -1)
+        (dek/global-tmux-clipboard-mode +1))
+    (global-clipetty-mode +1)))
 
 (setq auto-mode-alist (append
         '(("BUILD\\'" . bazel-build-mode))

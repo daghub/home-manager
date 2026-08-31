@@ -86,7 +86,7 @@
     enable = true;
     keyMode = "vi";
     prefix = "`";
-    terminal = "screen-256color";
+    terminal = "tmux-256color";
     mouse = true;
     extraConfig = ''
 # See https://github.com/spudlyo/clipetty#dealing-with-a-stale-ssh_tty-environment-variable
