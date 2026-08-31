@@ -69,16 +69,55 @@
   :commands (codex-ide
              codex-ide-continue
              codex-ide-menu
+             codex-ide-prompt
              codex-ide-status
              codex-ide-switch-to-buffer
              codex-ide-session-buffer-list
              codex-ide-session-diff-open
+             codex-ide-submit-image
+             codex-ide-submit-clipboard-image
+             codex-ide-set-model-and-reasoning-effort
              codex-ide-interrupt)
   :config
   ;; Resolve the executable through the active Home Manager session instead of
   ;; baking a Nix store path into the configuration.
   (setq codex-ide-cli-path (or (executable-find "codex") "codex")
-        codex-ide-new-session-split 'vertical))
+        codex-ide-new-session-split 'vertical
+        codex-ide-model "gpt-5.6-terra"
+        codex-ide-reasoning-effort "medium"))
+
+(defun dek/codex-ide--register-workspace-buffer (&optional buffer)
+  "Keep BUFFER visible in Doom's current workspace."
+  (let ((buffer (if buffer (get-buffer buffer) (current-buffer))))
+    (when buffer
+      (with-current-buffer buffer
+        (setq-local doom-real-buffer-p t))
+      (when (and (bound-and-true-p persp-mode)
+                 (fboundp 'get-current-persp)
+                 (fboundp 'persp-add-buffer))
+        (let ((persp (get-current-persp)))
+          (when persp
+            (persp-add-buffer buffer persp nil nil)))))))
+
+(defun dek/codex-ide-register-current-buffer-h ()
+  "Treat Codex IDE buffers as real workspace buffers."
+  (dek/codex-ide--register-workspace-buffer (current-buffer)))
+
+(dolist (hook '(codex-ide-session-mode-hook
+                codex-ide-status-mode-hook
+                codex-ide-session-buffer-list-mode-hook))
+  (add-hook hook #'dek/codex-ide-register-current-buffer-h))
+
+(after! codex-ide-window
+  (defun dek/codex-ide-display-buffer-register-workspace-a (buffer &rest _)
+    "Register displayed Codex BUFFER with the current Doom workspace."
+    (dek/codex-ide--register-workspace-buffer buffer))
+  (unless (advice-member-p
+           #'dek/codex-ide-display-buffer-register-workspace-a
+           #'codex-ide-display-buffer)
+    (advice-add #'codex-ide-display-buffer
+                :after
+                #'dek/codex-ide-display-buffer-register-workspace-a)))
 
 (after! codex-ide-renderer
   ;; Keep Codex sessions visible when opening file links from transcript text.
@@ -235,10 +274,54 @@
         (user-error "Selected Codex thread is missing id or cwd"))
       (codex-ide--show-or-resume-thread thread-id cwd))))
 
+(defun dek/codex-ide-set-model ()
+  "Set the Codex model for a selected scope."
+  (interactive)
+  (require 'codex-ide-config)
+  (let* ((session (codex-ide--session-for-current-buffer))
+         (model (codex-ide-config-read-value 'model session)))
+    (codex-ide-config-apply-interactively
+     'model
+     (unless (string-empty-p model) model)
+     session)))
+
+(defun dek/codex-ide-set-reasoning-effort ()
+  "Set Codex reasoning effort for a selected scope."
+  (interactive)
+  (require 'codex-ide-config)
+  (let* ((session (codex-ide--session-for-current-buffer))
+         (model (codex-ide-config-effective-value 'model session))
+         (effort (codex-ide-config-read-value
+                  'reasoning-effort session model)))
+    (codex-ide-config-apply-interactively
+     'reasoning-effort effort session)))
+
+(defun dek/codex-ide-set-model-and-effort ()
+  "Set Codex model and reasoning effort together."
+  (interactive)
+  (require 'codex-ide-config)
+  (call-interactively #'codex-ide-set-model-and-reasoning-effort))
+
+(defun dek/codex-ide-menu ()
+  "Open a personal Codex command menu without transient."
+  (interactive)
+  (let* ((commands
+          '(("Set model" . dek/codex-ide-set-model)
+            ("Prompt from minibuffer" . codex-ide-prompt)
+            ("Attach image file" . codex-ide-submit-image)
+            ("Attach clipboard image" . codex-ide-submit-clipboard-image)))
+         (choice (completing-read "Codex: " commands nil t)))
+    (call-interactively (cdr (assoc choice commands)))))
+
+(defalias 'codex-ide-menu #'dek/codex-ide-menu)
+
+(after! codex-ide-transient
+  (defalias 'codex-ide-menu #'dek/codex-ide-menu))
+
 (after! codex-ide-session-mode
   (map! :map codex-ide-session-mode-map
         :localleader
-        :desc "Codex menu" "m" #'codex-ide-menu
+        :desc "Codex menu" "m" #'dek/codex-ide-menu
         :desc "Session diff" "d" #'codex-ide-session-diff-open
         :desc "Interrupt turn" "k" #'codex-ide-interrupt
         :desc "Toggle detail" "v" #'codex-ide-session-transcript-toggle-detail-level))
@@ -247,11 +330,13 @@
       :prefix ("a" . "agents")
       :desc "New Codex session"       "n" #'codex-ide
       :desc "Continue latest session" "c" #'codex-ide-continue
-      :desc "Codex menu"               "m" #'codex-ide-menu
+      :desc "Codex menu"               "m" #'dek/codex-ide-menu
       :desc "Project session history" "s" #'codex-ide-status
       :desc "All Codex sessions"      "S" #'dek/codex-ide-resume-any-session
       :desc "Live Codex sessions"     "l" #'codex-ide-session-buffer-list
       :desc "Current project session" "b" #'codex-ide-switch-to-buffer
+      :desc "Set model and effort"    "M" #'dek/codex-ide-set-model-and-effort
+      :desc "Set reasoning effort"    "e" #'dek/codex-ide-set-reasoning-effort
       :desc "Rename Codex session"    "r" #'dek/codex-ide-rename-session
       :desc "Session diff"             "d" #'codex-ide-session-diff-open
       :desc "Interrupt active turn"    "k" #'codex-ide-interrupt)
