@@ -135,13 +135,13 @@
   (evil-local-set-key 'normal (kbd "p") #'codex-ide-status-mode-nav-backward)
   (evil-local-set-key 'normal (kbd "RET") #'codex-ide-status-mode-display-session-at-point)
   (evil-local-set-key 'normal (kbd "TAB") #'codex-ide-section-toggle-at-point)
-  (evil-local-set-key 'normal (kbd "g") #'codex-ide-status-mode-refresh)
+  (evil-local-set-key 'normal (kbd "g r") #'codex-ide-status-mode-refresh)
   (evil-local-set-key 'normal (kbd "D") #'codex-ide-status-mode-delete-thing-at-point)
   (evil-local-set-key 'normal (kbd "K") #'codex-ide-status-mode-kill-buffer-at-point))
 
 (defun dek/codex-ide-session-buffer-list-evil-bindings ()
   (evil-local-set-key 'normal (kbd "RET") #'codex-ide-session-list-display-session-at-point)
-  (evil-local-set-key 'normal (kbd "g") #'codex-ide-session-buffer-list-redisplay)
+  (evil-local-set-key 'normal (kbd "g r") #'codex-ide-session-buffer-list-redisplay)
   (evil-local-set-key 'normal (kbd "K") #'codex-ide-session-buffer-list-delete-buffer))
 
 (add-hook 'codex-ide-status-mode-hook #'dek/codex-ide-status-evil-bindings)
@@ -274,6 +274,336 @@
         (user-error "Selected Codex thread is missing id or cwd"))
       (codex-ide--show-or-resume-thread thread-id cwd))))
 
+(defun dek/codex-ide--one-line (text)
+  "Return TEXT trimmed and collapsed to one line."
+  (replace-regexp-in-string
+   "[[:space:]]+"
+   " "
+   (string-trim (or text ""))))
+
+(defun dek/codex-ide--sessions-directory ()
+  "Return the local Codex sessions directory."
+  (expand-file-name "sessions" (or (getenv "CODEX_HOME") "~/.codex")))
+
+(defun dek/codex-ide--codex-program ()
+  "Return the Codex CLI executable."
+  (or (executable-find "codex")
+      (let ((codex (expand-file-name "~/.local/bin/codex")))
+        (when (file-executable-p codex)
+          codex))
+      (user-error "Could not find the codex executable")))
+
+(defun dek/codex-ide--session-search-rg-args (query regex)
+  "Return ripgrep arguments for searching Codex sessions for QUERY.
+When REGEX is nil, search for QUERY as a literal string."
+  (append '("--ignore-case")
+          (unless regex '("--fixed-strings"))
+          '("--glob" "*.jsonl" "--")
+          (list query)))
+
+(defun dek/codex-ide--session-search-files (query &optional regex)
+  "Return local Codex session files containing QUERY.
+When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
+  (let ((rg (executable-find "rg"))
+        (sessions-dir (dek/codex-ide--sessions-directory)))
+    (unless rg
+      (user-error "Searching Codex sessions requires rg"))
+    (unless (file-directory-p sessions-dir)
+      (user-error "Codex sessions directory does not exist: %s" sessions-dir))
+    (with-temp-buffer
+      (let ((exit-code
+             (apply
+              #'process-file
+              rg
+              nil
+              t
+              nil
+              (append '("--files-with-matches")
+                      (dek/codex-ide--session-search-rg-args query regex)
+                      (list sessions-dir)))))
+        (cond
+         ((zerop exit-code)
+          (split-string (buffer-string) "\n" t))
+         ((= exit-code 1)
+          nil)
+         (t
+          (user-error "rg failed while searching Codex sessions: %s"
+                      (string-trim (buffer-string)))))))))
+
+(defun dek/codex-ide--json-string-field (field text)
+  "Return JSON string FIELD from TEXT, or nil."
+  (when (string-match
+         (format "\"%s\":\"\\([^\"\\]*\\(?:\\\\.[^\"\\]*\\)*\\)\""
+                 (regexp-quote field))
+         text)
+    (json-read-from-string (concat "\"" (match-string 1 text) "\""))))
+
+(defun dek/codex-ide--session-file-metadata (path)
+  "Return basic Codex session metadata from PATH."
+  (with-temp-buffer
+    (insert-file-contents path nil 0 262144)
+    (let ((metadata-line
+           (buffer-substring-no-properties
+            (point-min)
+            (line-end-position))))
+      (list :id (dek/codex-ide--json-string-field "id" metadata-line)
+            :session-id (dek/codex-ide--json-string-field "session_id"
+                                                          metadata-line)
+            :parent-thread-id
+            (dek/codex-ide--json-string-field "parent_thread_id"
+                                              metadata-line)
+            :cwd (dek/codex-ide--json-string-field "cwd" metadata-line)))))
+
+(defun dek/codex-ide--session-file-regex-snippet (path query)
+  "Return a compact ripgrep-regex snippet around QUERY in session file PATH."
+  (let ((rg (executable-find "rg")))
+    (when rg
+      (with-temp-buffer
+        (let ((exit-code
+               (apply
+                #'process-file
+                rg
+                nil
+                t
+                nil
+                (append '("--json" "--max-count" "1")
+                        (dek/codex-ide--session-search-rg-args query t)
+                        (list path)))))
+          (when (zerop exit-code)
+            (goto-char (point-min))
+            (let (snippet)
+              (while (and (not snippet) (not (eobp)))
+                (let* ((json-object-type 'alist)
+                       (json-array-type 'list)
+                       (json-key-type 'symbol)
+                       (event (ignore-errors
+                                (json-read-from-string
+                                 (buffer-substring-no-properties
+                                  (line-beginning-position)
+                                  (line-end-position))))))
+                  (when (equal (alist-get 'type event) "match")
+                    (let* ((data (alist-get 'data event))
+                           (lines (alist-get 'lines data))
+                           (text (or (alist-get 'text lines) ""))
+                           (submatch (car (alist-get 'submatches data)))
+                           (match-start (or (alist-get 'start submatch) 0))
+                           (match-end (or (alist-get 'end submatch)
+                                          match-start))
+                           (text-length (length text))
+                           (start (max 0
+                                       (- (min match-start text-length) 80)))
+                           (end (min text-length
+                                     (+ (min match-end text-length) 120)))
+                           (raw-snippet (substring text start end)))
+                      (setq raw-snippet
+                            (replace-regexp-in-string "\\\\n" " "
+                                                      raw-snippet))
+                      (setq raw-snippet
+                            (replace-regexp-in-string "\\\\\"" "\""
+                                                      raw-snippet))
+                      (setq snippet
+                            (concat (if (> start 0) "..." "")
+                                    (dek/codex-ide--one-line raw-snippet)
+                                    (if (< end text-length) "..." ""))))))
+                (forward-line 1))
+              (or snippet ""))))))))
+
+(defun dek/codex-ide--session-file-snippet (path query &optional regex)
+  "Return a compact snippet around QUERY in session file PATH."
+  (if regex
+      (or (dek/codex-ide--session-file-regex-snippet path query) "")
+    (with-temp-buffer
+      (insert-file-contents path)
+      (let ((case-fold-search t))
+        (if (search-forward query nil t)
+            (let* ((start (max (point-min) (- (match-beginning 0) 80)))
+                   (end (min (point-max) (+ (match-end 0) 120)))
+                   (snippet (buffer-substring-no-properties start end)))
+              (setq snippet (replace-regexp-in-string "\\\\n" " " snippet))
+              (setq snippet (replace-regexp-in-string "\\\\\"" "\"" snippet))
+              (concat (if (> start (point-min)) "..." "")
+                      (dek/codex-ide--one-line snippet)
+                      (if (< end (point-max)) "..." "")))
+          "")))))
+
+(defun dek/codex-ide--threads-by-id (threads)
+  "Return a hash table mapping THREADS by id."
+  (let ((table (make-hash-table :test 'equal)))
+    (dolist (thread threads)
+      (when-let* ((thread-id (alist-get 'id thread)))
+        (puthash thread-id thread table)))
+    table))
+
+(defun dek/codex-ide--thread-for-session-file (metadata threads-by-id)
+  "Return the thread matching METADATA from THREADS-BY-ID."
+  (let ((ids (list (plist-get metadata :id)
+                   (plist-get metadata :session-id)
+                   (plist-get metadata :parent-thread-id)))
+        thread)
+    (while (and ids (not thread))
+      (when (car ids)
+        (setq thread (gethash (car ids) threads-by-id)))
+      (setq ids (cdr ids)))
+    thread))
+
+(defun dek/codex-ide--thread-search-candidate (match)
+  "Return a completion candidate for MATCH."
+  (let* ((thread (plist-get match :thread))
+         (snippet (plist-get match :snippet))
+         (cwd (or (alist-get 'cwd thread) ""))
+         (title (dek/codex-ide--one-line
+                 (dek/codex-ide--thread-display-title thread))))
+    (cons (format "%s  [%s]  %s  %s  %s"
+                  (dek/codex-ide--thread-display-time thread)
+                  (dek/codex-ide--thread-short-id thread)
+                  title
+                  snippet
+                  (abbreviate-file-name cwd))
+          match)))
+
+(defun dek/codex-ide--search-sessions (query &optional regex)
+  "Search stored Codex sessions for QUERY.
+When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
+  (require 'codex-ide)
+  (require 'codex-ide-threads)
+  (require 'json)
+  (setq query (string-trim query))
+  (when (string-empty-p query)
+    (user-error "Search query cannot be empty"))
+  (let* ((files (dek/codex-ide--session-search-files query regex))
+         (threads nil)
+         (threads-by-id nil)
+         (seen (make-hash-table :test 'equal))
+         (skipped 0)
+         (matches nil))
+    (unless files
+      (user-error "No Codex sessions match: %s" query))
+    (message "Searching %d matching Codex session files..." (length files))
+    (setq threads (dek/codex-ide--all-codex-threads)
+          threads-by-id (dek/codex-ide--threads-by-id threads))
+    (dolist (path files)
+      (condition-case _err
+          (let* ((metadata (dek/codex-ide--session-file-metadata path))
+                 (thread (dek/codex-ide--thread-for-session-file
+                          metadata
+                          threads-by-id))
+                 (thread-id (and thread (alist-get 'id thread))))
+            (if (or (not thread-id) (gethash thread-id seen))
+                (setq skipped (1+ skipped))
+              (puthash thread-id t seen)
+              (push (list :thread thread
+                          :snippet
+                          (dek/codex-ide--session-file-snippet
+                           path query regex))
+                    matches)))
+        (error
+         (setq skipped (1+ skipped)))))
+    (unless matches
+      (user-error "No Codex sessions match: %s" query))
+    (let* ((choices
+            (mapcar (lambda (match)
+                      (dek/codex-ide--thread-search-candidate match))
+                    (nreverse matches)))
+           (choice (completing-read "Resume Codex match: " choices nil t))
+           (thread (plist-get (cdr (assoc choice choices)) :thread))
+           (thread-id (alist-get 'id thread))
+           (cwd (alist-get 'cwd thread)))
+      (when (> skipped 0)
+        (message "Skipped %d duplicate or unlisted Codex session file%s"
+                 skipped
+                 (if (= skipped 1) "" "s")))
+      (unless (and thread-id cwd)
+        (user-error "Selected Codex thread is missing id or cwd"))
+      (codex-ide--show-or-resume-thread thread-id cwd))))
+
+(defun dek/codex-ide-search-sessions (query)
+  "Search stored Codex sessions by literal transcript content."
+  (interactive (list (read-string "Search Codex sessions: ")))
+  (dek/codex-ide--search-sessions query))
+
+(defun dek/codex-ide-search-sessions-regex (query)
+  "Search stored Codex sessions by ripgrep regular expression."
+  (interactive (list (read-string "Regex search Codex sessions: ")))
+  (dek/codex-ide--search-sessions query t))
+
+(defun dek/codex-ide--select-thread (prompt)
+  "Prompt with PROMPT for one stored Codex thread."
+  (let* ((current-session (codex-ide--session-for-current-buffer))
+         (current-thread-id (and current-session
+                                 (codex-ide-session-thread-id
+                                  current-session)))
+         (threads (dek/codex-ide--all-codex-threads))
+         (choices (dek/codex-ide--all-thread-candidates threads))
+         (default-choice
+          (car (seq-find
+                (lambda (choice)
+                  (equal (alist-get 'id (cdr choice)) current-thread-id))
+                choices))))
+    (unless choices
+      (user-error "No Codex threads found"))
+    (cdr (assoc (completing-read prompt choices nil t nil nil default-choice)
+                choices))))
+
+(defun dek/codex-ide--status-thread-at-point ()
+  "Return the Codex thread represented by the status entry at point."
+  (when (derived-mode-p 'codex-ide-status-mode)
+    (require 'codex-ide-status-mode)
+    (when-let* ((section
+                 (ignore-errors
+                   (codex-ide-status-mode--actionable-section-at-point))))
+      (pcase (codex-ide-section-type section)
+        ('thread
+         (codex-ide-section-value section))
+        ('buffer
+         (let* ((session (codex-ide-section-value section))
+                (buffer (and (codex-ide-session-p session)
+                             (codex-ide-session-buffer session))))
+           (when (and (codex-ide-session-p session)
+                      (codex-ide-session-thread-id session))
+             `((id . ,(codex-ide-session-thread-id session))
+               (name . ,(if (buffer-live-p buffer)
+                            (buffer-name buffer)
+                          "Live Codex session"))
+               (cwd . ,(or codex-ide-status-mode--directory
+                           default-directory))))))))))
+
+(defun dek/codex-ide-archive-session ()
+  "Archive a stored Codex session using the Codex CLI."
+  (interactive)
+  (require 'codex-ide)
+  (require 'codex-ide-delete-session-thread)
+  (require 'codex-ide-threads)
+  (let* ((status-buffer (and (derived-mode-p 'codex-ide-status-mode)
+                             (current-buffer)))
+         (thread (or (dek/codex-ide--status-thread-at-point)
+                     (dek/codex-ide--select-thread "Archive Codex thread: ")))
+         (thread-id (alist-get 'id thread))
+         (title (dek/codex-ide--one-line
+                 (dek/codex-ide--thread-display-title thread)))
+         (codex (dek/codex-ide--codex-program)))
+    (unless thread-id
+      (user-error "Selected Codex thread is missing id"))
+    (unless (yes-or-no-p
+             (format "Archive Codex thread %s (%s)? " thread-id title))
+      (user-error "Canceled archive of Codex thread %s" thread-id))
+    (when-let* ((session (codex-ide--session-for-thread-id-any thread-id)))
+      (codex-ide--delete-live-thread-session session))
+    (with-temp-buffer
+      (let ((exit-code
+             (process-file codex nil (list t t) nil "archive" thread-id))
+            (output nil))
+        (setq output (dek/codex-ide--one-line (buffer-string)))
+        (if (zerop exit-code)
+            (message "%s" (or (and (not (string-empty-p output)) output)
+                              (format "Archived Codex thread %s" thread-id)))
+          (user-error "Failed to archive Codex thread %s: %s"
+                      thread-id
+                      output))))
+    (when (and status-buffer (buffer-live-p status-buffer))
+      (with-current-buffer status-buffer
+        (when (derived-mode-p 'codex-ide-status-mode)
+          (codex-ide-status-mode-refresh))))))
+
 (defun dek/codex-ide-set-model ()
   "Set the Codex model for a selected scope."
   (interactive)
@@ -326,6 +656,11 @@
         :desc "Interrupt turn" "k" #'codex-ide-interrupt
         :desc "Toggle detail" "v" #'codex-ide-session-transcript-toggle-detail-level))
 
+(after! codex-ide-status-mode
+  (define-key codex-ide-status-mode-map
+              (kbd "a")
+              #'dek/codex-ide-archive-session))
+
 (map! :leader
       :prefix ("a" . "agents")
       :desc "New Codex session"       "n" #'codex-ide
@@ -333,6 +668,9 @@
       :desc "Codex menu"               "m" #'dek/codex-ide-menu
       :desc "Project session history" "s" #'codex-ide-status
       :desc "All Codex sessions"      "S" #'dek/codex-ide-resume-any-session
+      :desc "Search Codex sessions"   "/" #'dek/codex-ide-search-sessions
+      :desc "Regex search sessions"   "?" #'dek/codex-ide-search-sessions-regex
+      :desc "Archive Codex session"   "a" #'dek/codex-ide-archive-session
       :desc "Live Codex sessions"     "l" #'codex-ide-session-buffer-list
       :desc "Current project session" "b" #'codex-ide-switch-to-buffer
       :desc "Set model and effort"    "M" #'dek/codex-ide-set-model-and-effort
