@@ -293,13 +293,17 @@
           codex))
       (user-error "Could not find the codex executable")))
 
-(defun dek/codex-ide--session-search-rg-args (query regex)
-  "Return ripgrep arguments for searching Codex sessions for QUERY.
+(defun dek/codex-ide--session-search-rg-query-args (query regex)
+  "Return ripgrep query arguments for searching QUERY.
 When REGEX is nil, search for QUERY as a literal string."
   (append '("--ignore-case")
           (unless regex '("--fixed-strings"))
-          '("--glob" "*.jsonl" "--")
-          (list query)))
+          (list "--" query)))
+
+(defun dek/codex-ide--session-search-rg-file-args (query regex)
+  "Return ripgrep file-search arguments for QUERY."
+  (append '("--glob" "*.jsonl")
+          (dek/codex-ide--session-search-rg-query-args query regex)))
 
 (defun dek/codex-ide--session-search-files (query &optional regex)
   "Return local Codex session files containing QUERY.
@@ -319,7 +323,8 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
               t
               nil
               (append '("--files-with-matches")
-                      (dek/codex-ide--session-search-rg-args query regex)
+                      (dek/codex-ide--session-search-rg-file-args
+                       query regex)
                       (list sessions-dir)))))
         (cond
          ((zerop exit-code)
@@ -354,6 +359,96 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
                                               metadata-line)
             :cwd (dek/codex-ide--json-string-field "cwd" metadata-line)))))
 
+(defun dek/codex-ide--thread-search-text (thread)
+  "Return searchable metadata text for THREAD."
+  (let ((values (list (alist-get 'id thread)
+                      (alist-get 'name thread)
+                      (alist-get 'title thread)
+                      (alist-get 'threadName thread)
+                      (alist-get 'thread_name thread)
+                      (alist-get 'preview thread)
+                      (alist-get 'cwd thread))))
+    (mapconcat #'identity
+               (delq nil
+                     (mapcar (lambda (value)
+                               (when value
+                                 (dek/codex-ide--one-line
+                                  (format "%s" value))))
+                             values))
+               " ")))
+
+(defun dek/codex-ide--thread-metadata-match-ids
+    (threads query &optional regex)
+  "Return ids for THREADS whose metadata matches QUERY.
+When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
+  (let ((rg (executable-find "rg")))
+    (unless rg
+      (user-error "Searching Codex sessions requires rg"))
+    (let ((output (generate-new-buffer " *codex metadata search*")))
+      (unwind-protect
+          (with-temp-buffer
+            (dolist (thread threads)
+              (when-let* ((thread-id (alist-get 'id thread)))
+                (insert thread-id "\t"
+                        (dek/codex-ide--thread-search-text thread)
+                        "\n")))
+            (let ((exit-code
+                   (apply
+                    #'call-process-region
+                    (point-min)
+                    (point-max)
+                    rg
+                    nil
+                    output
+                    nil
+                    (append '("--line-number")
+                            (dek/codex-ide--session-search-rg-query-args
+                             query regex)))))
+              (cond
+               ((zerop exit-code)
+                (with-current-buffer output
+                  (goto-char (point-min))
+                  (let ((seen (make-hash-table :test 'equal))
+                        (thread-ids nil))
+                    (while (re-search-forward
+                            "^[0-9]+:\\([^\t\n]+\\)\t"
+                            nil t)
+                      (let ((thread-id (match-string 1)))
+                        (unless (gethash thread-id seen)
+                          (puthash thread-id t seen)
+                          (push thread-id thread-ids))))
+                    (nreverse thread-ids))))
+               ((= exit-code 1)
+                nil)
+               (t
+                (with-current-buffer output
+                  (user-error
+                   "rg failed while searching Codex session titles: %s"
+                   (string-trim (buffer-string))))))))
+        (when (buffer-live-p output)
+          (kill-buffer output))))))
+
+(defun dek/codex-ide--shorten (text max-width)
+  "Return TEXT truncated to MAX-WIDTH display columns."
+  (let ((text (or text "")))
+    (if (> (string-width text) max-width)
+        (concat (truncate-string-to-width text (- max-width 3)
+                                          nil nil t)
+                "...")
+      text)))
+
+(defun dek/codex-ide--thread-metadata-snippet (thread)
+  "Return a compact metadata snippet for THREAD."
+  (let* ((title (dek/codex-ide--one-line
+                 (dek/codex-ide--thread-display-title thread)))
+         (preview (dek/codex-ide--one-line
+                   (or (alist-get 'preview thread) "")))
+         (text (if (and (not (string-empty-p preview))
+                        (not (string= title preview)))
+                   (format "title: %s preview: %s" title preview)
+                 (format "title: %s" title))))
+    (dek/codex-ide--shorten text 220)))
+
 (defun dek/codex-ide--session-file-regex-snippet (path query)
   "Return a compact ripgrep-regex snippet around QUERY in session file PATH."
   (let ((rg (executable-find "rg")))
@@ -367,7 +462,8 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
                 t
                 nil
                 (append '("--json" "--max-count" "1")
-                        (dek/codex-ide--session-search-rg-args query t)
+                        (dek/codex-ide--session-search-rg-file-args
+                         query t)
                         (list path)))))
           (when (zerop exit-code)
             (goto-char (point-min))
@@ -471,16 +567,26 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
   (when (string-empty-p query)
     (user-error "Search query cannot be empty"))
   (let* ((files (dek/codex-ide--session-search-files query regex))
-         (threads nil)
-         (threads-by-id nil)
+         (threads (dek/codex-ide--all-codex-threads))
+         (threads-by-id (dek/codex-ide--threads-by-id threads))
+         (metadata-thread-ids
+          (dek/codex-ide--thread-metadata-match-ids
+           threads query regex))
          (seen (make-hash-table :test 'equal))
          (skipped 0)
          (matches nil))
-    (unless files
-      (user-error "No Codex sessions match: %s" query))
-    (message "Searching %d matching Codex session files..." (length files))
-    (setq threads (dek/codex-ide--all-codex-threads)
-          threads-by-id (dek/codex-ide--threads-by-id threads))
+    (message "Searching %d transcript file%s and %d title match%s..."
+             (length files)
+             (if (= (length files) 1) "" "s")
+             (length metadata-thread-ids)
+             (if (= (length metadata-thread-ids) 1) "" "es"))
+    (dolist (thread-id metadata-thread-ids)
+      (when-let* ((thread (gethash thread-id threads-by-id)))
+        (puthash thread-id t seen)
+        (push (list :thread thread
+                    :snippet
+                    (dek/codex-ide--thread-metadata-snippet thread))
+              matches)))
     (dolist (path files)
       (condition-case _err
           (let* ((metadata (dek/codex-ide--session-file-metadata path))
