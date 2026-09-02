@@ -1,4 +1,34 @@
-{ config, pkgs, ... }:
+{ config, inputs, lib, pkgs, ... }:
+let
+  doomCoreSync = pkgs.writeShellApplication {
+    name = "doom-core-sync";
+    runtimeInputs = [ pkgs.emacs pkgs.git ];
+    text = ''
+      set -eu
+
+      doom_dir="${config.xdg.configHome}/emacs"
+      expected_rev="${inputs.doom-core.rev}"
+
+      if ! git -C "$doom_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "Doom checkout not found at $doom_dir" >&2
+        echo "Clone it first, then run doom-core-sync again." >&2
+        exit 1
+      fi
+
+      if [ "$(git -C "$doom_dir" rev-parse HEAD)" != "$expected_rev" ]; then
+        if ! git -C "$doom_dir" diff-index --quiet HEAD --; then
+          echo "Doom checkout has tracked changes; refusing to replace them." >&2
+          exit 1
+        fi
+
+        git -C "$doom_dir" fetch --depth=1 origin "$expected_rev"
+        git -C "$doom_dir" checkout --detach "$expected_rev"
+      fi
+
+      "$doom_dir/bin/doom" sync --force
+    '';
+  };
+in
 {
   # Home Manager needs a bit of information about you and the paths it should
   # manage.
@@ -59,6 +89,7 @@
     pkgs.cloc
     pkgs.eternal-terminal
     pkgs.nodejs
+    doomCoreSync
   ];
 
 
@@ -126,6 +157,14 @@ set -sg escape-time 0
       "doom/packages.el".source = doom.d/packages.el;
     };
   };
+
+  # Keep Doom's mutable core checkout and generated package state aligned with
+  # the pinned Emacs and Doom revisions whenever Home Manager is activated.
+  home.activation.doomCoreSync = lib.hm.dag.entryAfter [ "installPackages" "linkGeneration" ] ''
+    if [ -z "$DRY_RUN_CMD" ] && [ -d "${config.xdg.configHome}/emacs/.git" ]; then
+      ${doomCoreSync}/bin/doom-core-sync
+    fi
+  '';
 
   # Let Home Manager install and manage itself.
   programs.home-manager.enable = true;

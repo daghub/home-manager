@@ -23,13 +23,13 @@ configuration, so subsequent switches do not need the bootstrap flags.
 
 Home Manager installs Emacs and Doom's command-line dependencies. Doom itself
 is intentionally a normal, writable Git checkout, because Doom needs to manage
-its own Git and package state.
+its own package state. Its core revision is pinned in `flake.lock`.
 
 After the first Home Manager activation, run:
 
 ```sh
-git clone --depth 1 https://github.com/doomemacs/core ~/.config/emacs
-~/.config/emacs/bin/doom install
+git clone https://github.com/doomemacs/core ~/.config/emacs
+home-manager switch --flake .#dekengren
 ~/.config/emacs/bin/doom doctor
 ```
 
@@ -44,15 +44,44 @@ After changing or pulling Home Manager files, activate the new generation:
 
 ```sh
 cd ~/.config/home-manager
-home-manager switch --flake .#dekengren
+home-manager switch
 ```
 
-Update the pinned Home Manager and Nixpkgs revisions deliberately:
+This repository lives at Home Manager's default flake path and its profile is
+named after the user, so no `--flake` argument is needed for normal use.
+Use `--flake <path>#<profile>` only when activating a different checkout or
+profile.
+
+## Pin inventory and upgrades
+
+`flake.lock` is the source of truth for the three external pins below. Inspect
+the lockfile diff before activating an update, then commit it with the
+corresponding configuration change.
+
+| Pin | Scope | Upgrade |
+| --- | --- | --- |
+| `nixpkgs` | Emacs, terminal tools, and all Home Manager packages | `nix flake update nixpkgs` |
+| `home-manager` | Home Manager modules and activation behavior | `nix flake update home-manager` |
+| `doom-core` | Doom core checkout at `~/.config/emacs` | `nix flake update doom-core`, then `home-manager switch` |
+
+After updating `nixpkgs` or `home-manager`, activate the new generation:
+
+```sh
+nix flake update nixpkgs
+home-manager switch
+```
+
+Update all three together only when that is intentional:
 
 ```sh
 nix flake update
-home-manager switch --flake .#dekengren
+home-manager switch
 ```
+
+Your Doom configuration (`doom.d/`) is pinned by this repository's Git commit.
+Doom pins its package set by default; use explicit `:pin` values in
+`doom.d/packages.el` for any package that must not follow Doom's chosen
+revision. Codex is deliberately outside these pins and updates independently.
 
 ### Doom configuration changes
 
@@ -61,17 +90,19 @@ home-manager switch --flake .#dekengren
 run `doom sync`; changes to `config.el` take effect after restarting Emacs.
 
 ```sh
-home-manager switch --flake .#dekengren
+home-manager switch
 doom sync
 ```
 
-To update Doom itself, do so deliberately and then synchronize it:
+Home Manager automatically moves Doom core to the locked revision and runs a
+forced Doom sync on every activation. `doom-core-sync` remains available to
+repair a checkout manually, but normal updates need only `home-manager switch`.
 
 ```sh
-git -C ~/.config/emacs pull --ff-only
-doom sync
-doom doctor
+home-manager switch
 ```
+
+Do not use `git pull` in `~/.config/emacs`: it bypasses the `doom-core` pin.
 
 If `doom` is not available by name in the current shell, use
 `~/.config/emacs/bin/doom` or open a new terminal after Home Manager has been
@@ -86,7 +117,7 @@ After the first Home Manager activation, install the package and restart
 Emacs:
 
 ```sh
-home-manager switch --flake .#dekengren
+home-manager switch
 doom sync
 ```
 

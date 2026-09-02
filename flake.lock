@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "doom-core": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787992388,
+        "narHash": "sha256-O6uiIqgYBIZ0L7fQfgmwlAzc5M9SARoMvbUsSlORcxU=",
+        "owner": "doomemacs",
+        "repo": "core",
+        "rev": "c080b3f3adb3e9bcad60b971cdd20f076e282a72",
+        "type": "github"
+      },
+      "original": {
+        "owner": "doomemacs",
+        "repo": "core",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -38,6 +54,7 @@
     },
     "root": {
       "inputs": {
+        "doom-core": "doom-core",
         "home-manager": "home-manager",
         "nixpkgs": "nixpkgs"
       }
