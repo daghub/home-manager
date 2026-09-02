@@ -280,6 +280,38 @@
       (alist-get 'preview thread)
       "Untitled"))
 
+(defun dek/codex-ide--thread-subject (thread)
+  "Return a concise, context-free subject for THREAD."
+  (let* ((raw (seq-find
+               (lambda (value)
+                 (and (stringp value)
+                      (not (string-empty-p (string-trim value)))))
+               (list (alist-get 'name thread)
+                     (alist-get 'title thread)
+                     (alist-get 'preview thread))))
+         (subject (dek/codex-ide--one-line
+                   (codex-ide--thread-choice-preview raw))))
+    (if (string-empty-p subject)
+        "Untitled"
+      (truncate-string-to-width subject 80 nil nil "…"))))
+
+(defun dek/codex-ide--thread-subject-candidates (threads)
+  "Return subject-only completion candidates for THREADS."
+  (let ((counts (make-hash-table :test #'equal)))
+    (dolist (thread threads)
+      (let ((subject (dek/codex-ide--thread-subject thread)))
+        (puthash subject (1+ (gethash subject counts 0)) counts)))
+    (mapcar
+     (lambda (thread)
+       (let ((subject (dek/codex-ide--thread-subject thread)))
+         (cons (if (> (gethash subject counts 0) 1)
+                   (format "%s [%s]"
+                           subject
+                           (dek/codex-ide--thread-short-id thread))
+                 subject)
+               thread)))
+     threads)))
+
 (defun dek/codex-ide--thread-display-time (thread)
   "Return a display timestamp for THREAD."
   (let ((timestamp (or (alist-get 'updatedAt thread)
@@ -288,8 +320,8 @@
         (codex-ide--format-thread-updated-at timestamp)
       "")))
 
-(defun dek/codex-ide--all-codex-threads (&optional page-limit)
-  "Return Codex threads across all projects."
+(defun dek/codex-ide--codex-threads (&optional directory page-limit)
+  "Return Codex threads, optionally restricted to DIRECTORY."
   (codex-ide--prepare-session-operations)
   (let* ((session (codex-ide--ensure-query-session-for-thread-selection
                    (codex-ide--get-working-directory)))
@@ -301,6 +333,8 @@
       (let* ((params (append `((limit . ,page-limit)
                                (sortKey . "updated_at")
                                (sortDirection . "desc"))
+                             (when directory
+                               `((cwd . ,directory)))
                              (when cursor
                                `((cursor . ,cursor)))))
              (result (codex-ide--request-sync session "thread/list" params))
@@ -310,6 +344,16 @@
         (unless cursor
           (setq done t))))
     threads))
+
+(defun dek/codex-ide--all-codex-threads (&optional page-limit)
+  "Return Codex threads across all projects."
+  (dek/codex-ide--codex-threads nil page-limit))
+
+(defun dek/codex-ide--project-codex-threads (&optional page-limit)
+  "Return Codex threads for the current project."
+  (dek/codex-ide--codex-threads
+   (codex-ide--get-working-directory)
+   page-limit))
 
 (defun dek/codex-ide--all-thread-candidates (threads)
   "Return completion candidates for THREADS."
@@ -699,14 +743,22 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
   (interactive (list (read-string "Regex search Codex sessions: ")))
   (dek/codex-ide--search-sessions query t))
 
-(defun dek/codex-ide--select-thread (prompt)
-  "Prompt with PROMPT for one stored Codex thread."
+(defun dek/codex-ide--select-thread
+    (prompt &optional candidate-function threads-function)
+  "Prompt with PROMPT for one stored Codex thread.
+
+When CANDIDATE-FUNCTION is non-nil, call it with the stored threads to
+construct the completion candidates.  When THREADS-FUNCTION is non-nil,
+call it to obtain the threads."
   (let* ((current-session (codex-ide--session-for-current-buffer))
          (current-thread-id (and current-session
                                  (codex-ide-session-thread-id
                                   current-session)))
-         (threads (dek/codex-ide--all-codex-threads))
-         (choices (dek/codex-ide--all-thread-candidates threads))
+         (threads (funcall (or threads-function
+                               #'dek/codex-ide--all-codex-threads)))
+         (choices (funcall (or candidate-function
+                               #'dek/codex-ide--all-thread-candidates)
+                           threads))
          (default-choice
           (car (seq-find
                 (lambda (choice)
@@ -740,19 +792,43 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
                (cwd . ,(or codex-ide-status-mode--directory
                            default-directory))))))))))
 
-(defun dek/codex-ide-archive-session ()
-  "Archive a stored Codex session using the Codex CLI."
+(defun dek/codex-ide--current-session-thread ()
+  "Return the stored thread for the current Codex session buffer."
+  (when (derived-mode-p 'codex-ide-session-mode)
+    (when-let* ((session (codex-ide--session-for-current-buffer))
+                (thread-id (codex-ide-session-thread-id session)))
+      (or (alist-get 'thread
+                     (ignore-errors
+                       (codex-ide--read-thread session thread-id nil)))
+          `((id . ,thread-id)
+            (name . "Current Codex session")
+            (cwd . ,(codex-ide-session-directory session)))))))
+
+(defun dek/codex-ide-archive-session (&optional all-projects)
+  "Archive a stored Codex session using the Codex CLI.
+
+By default, offer sessions from the current project.  When ALL-PROJECTS
+is non-nil, offer sessions from every project."
   (interactive)
   (require 'codex-ide)
   (require 'codex-ide-delete-session-thread)
   (require 'codex-ide-threads)
   (let* ((status-buffer (and (derived-mode-p 'codex-ide-status-mode)
                              (current-buffer)))
-         (thread (or (dek/codex-ide--status-thread-at-point)
-                     (dek/codex-ide--select-thread "Archive Codex thread: ")))
+         (thread (or (and (not all-projects)
+                          (or (dek/codex-ide--current-session-thread)
+                              (dek/codex-ide--status-thread-at-point)))
+                     ;; Archive selection should show only the session
+                     ;; subject, without transcript metadata or context.
+                     (dek/codex-ide--select-thread
+                      (if all-projects
+                          "Archive Codex thread from any project: "
+                        "Archive Codex thread from this project: ")
+                      #'dek/codex-ide--thread-subject-candidates
+                      (unless all-projects
+                        #'dek/codex-ide--project-codex-threads))))
          (thread-id (alist-get 'id thread))
-         (title (dek/codex-ide--one-line
-                 (dek/codex-ide--thread-display-title thread)))
+         (title (dek/codex-ide--thread-subject thread))
          (codex (dek/codex-ide--codex-program)))
     (unless thread-id
       (user-error "Selected Codex thread is missing id"))
@@ -776,6 +852,11 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
       (with-current-buffer status-buffer
         (when (derived-mode-p 'codex-ide-status-mode)
           (codex-ide-status-mode-refresh))))))
+
+(defun dek/codex-ide-archive-any-session ()
+  "Archive a stored Codex session from any project."
+  (interactive)
+  (dek/codex-ide-archive-session t))
 
 (defun dek/codex-ide-set-model ()
   "Set the Codex model for a selected scope."
@@ -843,7 +924,8 @@ When REGEX is non-nil, treat QUERY as a ripgrep regular expression."
       :desc "All Codex sessions"      "S" #'dek/codex-ide-resume-any-session
       :desc "Search Codex sessions"   "/" #'dek/codex-ide-search-sessions
       :desc "Regex search sessions"   "?" #'dek/codex-ide-search-sessions-regex
-      :desc "Archive Codex session"   "a" #'dek/codex-ide-archive-session
+      :desc "Archive project session" "a" #'dek/codex-ide-archive-session
+      :desc "Archive any session"     "A" #'dek/codex-ide-archive-any-session
       :desc "Live Codex sessions"     "l" #'codex-ide-session-buffer-list
       :desc "Current project session" "b" #'codex-ide-switch-to-buffer
       :desc "Set model and effort"    "M" #'dek/codex-ide-set-model-and-effort
