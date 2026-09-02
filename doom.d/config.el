@@ -111,6 +111,22 @@
   (add-to-list 'lsp-file-watch-ignored-directories "[/\\\\]bazel-.*\\'")
 )
 
+(after! helm
+  ;; Doom keeps Helm navigation within a result source.  Continue into the
+  ;; adjacent source at the boundary, so arrows traverse Buffers and Recentf.
+  (defun dek/helm-next-candidate-or-source ()
+    (interactive)
+    (if (with-helm-window (helm-end-of-source-p))
+        (helm-next-source)
+      (helm-next-line)))
+  (defun dek/helm-previous-candidate-or-source ()
+    (interactive)
+    (if (with-helm-window (helm-beginning-of-source-p))
+        (helm-previous-source)
+      (helm-previous-line)))
+  (define-key helm-map (kbd "<down>") #'dek/helm-next-candidate-or-source)
+  (define-key helm-map (kbd "<up>") #'dek/helm-previous-candidate-or-source))
+
 ;; Codex IDE -----------------------------------------------------------------
 ;;
 ;; This branch uses the native Codex app-server client, rather than Agent
