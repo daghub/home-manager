@@ -30,6 +30,10 @@ let
         git -C "$doom_dir" checkout --detach "$expected_rev"
       fi
 
+      # Doom core pins its standard module set as Git submodules.  A bare
+      # fetch/checkout leaves those directories empty on a fresh bootstrap.
+      git -C "$doom_dir" submodule update --init --recursive
+
       "$doom_dir/bin/doom" sync --force
     '';
   };
