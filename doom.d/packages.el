@@ -50,11 +50,6 @@
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
 ;(unpin! t)
 
-(package! shell-maker)
-(package! acp)
-;; Retained only so switching back to `main' needs no additional `doom sync'.
-;; This branch does not configure or bind Agent Shell.
-(package! agent-shell)
-
 (package! codex-ide
-  :recipe (:host github :repo "dgillis/emacs-codex-ide"))
+  :recipe (:host github :repo "dgillis/emacs-codex-ide")
+  :pin "5eba84dd58ad8609e8f7e8c4159d4aac90b4f303")

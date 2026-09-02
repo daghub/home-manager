@@ -15,9 +15,16 @@
     ];
     sessionVariables = {
       EDITOR = "emacs";
+      LANG = "C.UTF-8";
       POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD = "true";
       NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.local";
     };
+  };
+
+  # Keep the flake interface available after the initial bootstrap switch.
+  nix = {
+    package = pkgs.nix;
+    settings.experimental-features = [ "nix-command" "flakes" ];
   };
 
   # This value determines the Home Manager release that your configuration is
@@ -36,7 +43,6 @@
     pkgs.tig
     pkgs.htop
     pkgs.bmon
-    pkgs.direnv
     pkgs.openssh
     pkgs.ripgrep
     pkgs.fd
@@ -59,14 +65,7 @@
   programs.zsh = {
     enable = true;
     dotDir = config.home.homeDirectory;
-    sessionVariables = {
-       LC_ALL = "C.UTF-8";
-       LANG = "C.UTF-8";
-       NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.local";
-    };
     profileExtra = ''
-      export NPM_CONFIG_PREFIX="${config.home.homeDirectory}/.local"
-      export PATH="${config.home.homeDirectory}/.local/bin:$PATH"
       if [ -e "${config.home.homeDirectory}/.nix-profile/etc/profile.d/nix.sh" ]; then
         . "${config.home.homeDirectory}/.nix-profile/etc/profile.d/nix.sh"
       fi
@@ -76,10 +75,18 @@
       plugins = [
         "git"
         "sudo"
-        "direnv"
       ];
     };
-    initContent = "source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme && source ~/.p10k.zsh";
+    initContent = ''
+      source ${pkgs.zsh-powerlevel10k}/share/zsh-powerlevel10k/powerlevel10k.zsh-theme
+      source "${config.home.homeDirectory}/.p10k.zsh"
+    '';
+  };
+
+  programs.direnv = {
+    enable = true;
+    enableZshIntegration = true;
+    nix-direnv.enable = true;
   };
 
   programs.tmux = {

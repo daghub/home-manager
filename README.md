@@ -6,14 +6,18 @@ configuration in `doom.d/`.
 
 ## First-time setup
 
-Install [Home Manager](https://nix-community.github.io/home-manager/) first,
-then clone this repository and activate it:
+Install Nix first, then clone this repository and bootstrap its pinned Home
+Manager configuration:
 
 ```sh
 git clone git@github.com:daghub/home-manager.git ~/.config/home-manager
 cd ~/.config/home-manager
-home-manager switch
+nix --extra-experimental-features "nix-command flakes" \
+  run github:nix-community/home-manager -- switch --flake .#dekengren
 ```
+
+The first activation enables `nix-command` and `flakes` in the user Nix
+configuration, so subsequent switches do not need the bootstrap flags.
 
 ## Install Doom Emacs
 
@@ -21,7 +25,7 @@ Home Manager installs Emacs and Doom's command-line dependencies. Doom itself
 is intentionally a normal, writable Git checkout, because Doom needs to manage
 its own Git and package state.
 
-After the first `home-manager switch`, run:
+After the first Home Manager activation, run:
 
 ```sh
 git clone --depth 1 https://github.com/doomemacs/core ~/.config/emacs
@@ -36,12 +40,18 @@ that checkout unmanaged. Afterward, launch Doom with `emacs` as usual.
 
 ## Updating this configuration
 
-After changing or pulling changes to `home.nix` or other Home Manager files,
-activate the new generation:
+After changing or pulling Home Manager files, activate the new generation:
 
 ```sh
 cd ~/.config/home-manager
-home-manager switch
+home-manager switch --flake .#dekengren
+```
+
+Update the pinned Home Manager and Nixpkgs revisions deliberately:
+
+```sh
+nix flake update
+home-manager switch --flake .#dekengren
 ```
 
 ### Doom configuration changes
@@ -51,7 +61,7 @@ home-manager switch
 run `doom sync`; changes to `config.el` take effect after restarting Emacs.
 
 ```sh
-home-manager switch
+home-manager switch --flake .#dekengren
 doom sync
 ```
 
@@ -69,20 +79,16 @@ activated.
 
 ### Codex sessions in Doom
 
-This `codex-ide` branch uses [Codex IDE for Emacs](https://github.com/dgillis/emacs-codex-ide),
-a native client for `codex app-server`; it does not configure Agent Shell.
+This configuration uses [Codex IDE for Emacs](https://github.com/dgillis/emacs-codex-ide),
+a native client for `codex app-server`.
 
-On the first switch to this branch, install the package and restart Emacs:
+After the first Home Manager activation, install the package and restart
+Emacs:
 
 ```sh
-home-manager switch
+home-manager switch --flake .#dekengren
 doom sync
 ```
-
-After that initial setup, you can compare this branch with `main` using only
-`git switch <branch>`, `home-manager switch`, and an Emacs restart. Agent Shell
-packages are intentionally retained on this branch so returning to `main` does
-not require another `doom sync`.
 
 The main commands are available under `SPC a`:
 
@@ -91,10 +97,18 @@ The main commands are available under `SPC a`:
 | `SPC a n` | Start a new Codex session for the current project |
 | `SPC a c` | Continue the latest Codex session for the current project |
 | `SPC a s` | Browse, preview, and reopen saved Codex threads for the current project |
+| `SPC a S` | Pick and resume a saved Codex session from any project |
+| `SPC a /` | Search Codex sessions as literal text |
+| `SPC a ?` | Search Codex sessions with a regular expression |
+| `SPC a a` | Archive the current session, or pick one from the current project |
+| `SPC a A` | Pick and archive a session from any project |
 | `SPC a l` | List live Codex session buffers across projects |
 | `SPC a b` | Switch to the live Codex session for this project |
 | `SPC a d` | Open the current session's live/transcript/pinned diff |
 | `SPC a k` | Interrupt the active Codex turn |
+| `SPC a r` | Rename the current session |
+| `SPC a M` | Set the model and reasoning effort |
+| `SPC a e` | Set the reasoning effort |
 | `SPC a m` | Open Codex IDE's full command and configuration menu |
 
 In the project history view, use Evil `j`/`k` to move, `n`/`p` between session
