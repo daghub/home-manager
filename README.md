@@ -54,15 +54,17 @@ profile.
 
 ## Pin inventory and upgrades
 
-`flake.lock` is the source of truth for the three external pins below. Inspect
-the lockfile diff before activating an update, then commit it with the
-corresponding configuration change.
+Pins live either in `flake.lock` or in `doom.d/packages.el`. Inspect the diff
+before activating an update, then commit it with the corresponding
+configuration change.
 
 | Pin | Scope | Upgrade |
 | --- | --- | --- |
 | `nixpkgs` | Emacs, terminal tools, and all Home Manager packages | `nix flake update nixpkgs` |
 | `home-manager` | Home Manager modules and activation behavior | `nix flake update home-manager` |
-| `doom-core` | Doom core checkout at `~/.config/emacs` | `nix flake update doom-core`, then `home-manager switch` |
+| `doom-core` | Doom core and its module submodules at `~/.config/emacs` | `nix flake update doom-core`, then `home-manager switch` |
+| `bazel` | Doom's `emacs-bazel-mode` package | Run `git ls-remote https://github.com/bazelbuild/emacs-bazel-mode.git HEAD`, replace its `:pin` in `doom.d/packages.el`, then `home-manager switch` |
+| `codex-ide` | Doom's Codex IDE package | Run `git ls-remote https://github.com/dgillis/emacs-codex-ide.git HEAD`, replace its `:pin` in `doom.d/packages.el`, then `home-manager switch` |
 
 After updating `nixpkgs` or `home-manager`, activate the new generation:
 
@@ -79,9 +81,10 @@ home-manager switch
 ```
 
 Your Doom configuration (`doom.d/`) is pinned by this repository's Git commit.
-Doom pins its package set by default; use explicit `:pin` values in
-`doom.d/packages.el` for any package that must not follow Doom's chosen
-revision. Codex is deliberately outside these pins and updates independently.
+Doom pins its standard package set through the pinned core and module
+revisions; packages declared in `doom.d/packages.el` have explicit `:pin`
+values. The Codex CLI is deliberately outside these pins and updates
+independently.
 
 ### Doom configuration changes
 
