@@ -9,9 +9,14 @@ let
       doom_dir="${config.xdg.configHome}/emacs"
       expected_rev="${inputs.doom-core.rev}"
 
-      if ! git -C "$doom_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        echo "Doom checkout not found at $doom_dir" >&2
-        echo "Clone it first, then run doom-core-sync again." >&2
+      if [ ! -e "$doom_dir" ]; then
+        mkdir -p "$(dirname "$doom_dir")"
+        git init "$doom_dir" >/dev/null
+        git -C "$doom_dir" remote add origin https://github.com/doomemacs/core
+        git -C "$doom_dir" fetch --depth=1 origin "$expected_rev"
+        git -C "$doom_dir" checkout --detach FETCH_HEAD
+      elif ! git -C "$doom_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "Doom path exists but is not a Git checkout: $doom_dir" >&2
         exit 1
       fi
 
@@ -161,7 +166,7 @@ set -sg escape-time 0
   # Keep Doom's mutable core checkout and generated package state aligned with
   # the pinned Emacs and Doom revisions whenever Home Manager is activated.
   home.activation.doomCoreSync = lib.hm.dag.entryAfter [ "installPackages" "linkGeneration" ] ''
-    if [ -z "$DRY_RUN_CMD" ] && [ -d "${config.xdg.configHome}/emacs/.git" ]; then
+    if [ -z "$DRY_RUN_CMD" ]; then
       ${doomCoreSync}/bin/doom-core-sync
     fi
   '';

@@ -25,10 +25,10 @@ Home Manager installs Emacs and Doom's command-line dependencies. Doom itself
 is intentionally a normal, writable Git checkout, because Doom needs to manage
 its own package state. Its core revision is pinned in `flake.lock`.
 
-After the first Home Manager activation, run:
+The first Home Manager activation creates a checkout at the revision pinned in
+`flake.lock`, then synchronizes Doom:
 
 ```sh
-git clone https://github.com/doomemacs/core ~/.config/emacs
 home-manager switch --flake .#dekengren
 ~/.config/emacs/bin/doom doctor
 ```
