@@ -42,6 +42,11 @@
 ;; change `org-directory'. It must be set before org loads!
 (setq org-directory "~/org/")
 
+(after! evil
+  ;; Prevent Evil's default C-z binding from entering Emacs state.
+  (define-key evil-insert-state-map (kbd "C-z") #'ignore)
+  (define-key evil-motion-state-map (kbd "C-z") #'ignore))
+
 (defun dek/tmux-clipboard-copy (text)
   "Copy TEXT to the outer clipboard through tmux."
   (let ((tmux (executable-find "tmux")))
