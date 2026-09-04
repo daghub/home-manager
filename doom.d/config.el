@@ -156,7 +156,9 @@
   (setq codex-ide-cli-path (or (executable-find "codex") "codex")
         codex-ide-new-session-split 'vertical
         codex-ide-model "gpt-5.6-terra"
-        codex-ide-reasoning-effort "medium"))
+        codex-ide-reasoning-effort "medium"
+        ;; While a turn is running, RET appends prompts to the FIFO queue.
+        codex-ide-running-submit-action 'queue))
 
 (defun dek/codex-ide--register-workspace-buffer (&optional buffer)
   "Keep BUFFER visible in Doom's current workspace."
@@ -220,11 +222,26 @@
 (add-hook 'codex-ide-session-buffer-list-mode-hook
           #'dek/codex-ide-session-buffer-list-evil-bindings)
 
+(defun dek/codex-ide-steer-or-exit-insert ()
+  "Steer a running Codex turn, or leave Evil insert state.
+
+Only a nonempty active prompt is steered.  This lets a second ESC fall back
+to its usual Evil behavior after the first ESC submits the steering input."
+  (interactive)
+  (let ((session (codex-ide--session-for-current-project)))
+    (if (and (codex-ide-session-current-turn-id session)
+             (codex-ide--input-prompt-active-p session)
+             (or (not (codex-ide--current-input-empty-p session))
+                 (codex-ide--pending-local-images session)))
+        (codex-ide-steer)
+      (evil-normal-state))))
+
 (defun dek/codex-ide-session-evil-bindings ()
   "Use chat-style prompt submission in Codex session buffers."
   (evil-local-set-key 'normal (kbd "RET") #'codex-ide-submit)
   (evil-local-set-key 'insert (kbd "RET") #'codex-ide-submit)
-  (evil-local-set-key 'insert (kbd "S-<return>") #'newline))
+  (evil-local-set-key 'insert (kbd "S-<return>") #'newline)
+  (evil-local-set-key 'insert [escape] #'dek/codex-ide-steer-or-exit-insert))
 
 (add-hook 'codex-ide-session-mode-hook #'dek/codex-ide-session-evil-bindings)
 
