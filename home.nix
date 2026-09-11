@@ -95,6 +95,7 @@ in
     pkgs.gopls
     pkgs.pyright
     pkgs.emacs
+    pkgs.pandoc
     pkgs.cloc
     pkgs.eternal-terminal
     pkgs.nodejs
