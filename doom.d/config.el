@@ -182,6 +182,49 @@
                 codex-ide-session-buffer-list-mode-hook))
   (add-hook hook #'dek/codex-ide-register-current-buffer-h))
 
+(after! codex-ide-context
+  ;; Keep the user's actual request first so Codex session titles are derived
+  ;; from the task, while still sending Emacs-specific context to Codex.
+  (cl-defun codex-ide--compose-turn-payload
+      (prompt &key local-images image-detail suppress-context)
+    "Build prompt payload metadata for PROMPT in the current working directory.
+
+LOCAL-IMAGES is a list of image file paths to include after the text input.
+IMAGE-DETAIL, when non-nil, is forwarded to each `localImage' item.
+When SUPPRESS-CONTEXT is non-nil, omit Emacs session and prompt context."
+    (let* ((context-payload
+            (when (and (not suppress-context)
+                       (codex-ide--emacs-context-policy-includes-p 'prompt))
+              (codex-ide--context-payload-for-prompt)))
+           (context-suffix (alist-get 'formatted context-payload))
+           (session (codex-ide--get-default-session-for-current-buffer))
+           (session-suffix
+            (when (and (not suppress-context)
+                       (codex-ide--emacs-context-policy-includes-p 'session)
+                       (not (codex-ide--session-metadata-get
+                             session
+                             :session-context-sent)))
+              (codex-ide--format-session-context)))
+           (prompt-suffix (unless (codex-ide--leading-emacs-context-prefix-p
+                                    prompt)
+                            context-suffix))
+           (full-prompt (string-join
+                         (delq nil (list prompt session-suffix prompt-suffix))
+                         "\n\n"))
+           (skill-input-items
+            (codex-ide-mention-input-items
+             (or prompt "")
+             session)))
+      `((context-summary . ,(alist-get 'summary context-payload))
+        (included-session-context . ,(and session-suffix t))
+        (input . ,(vconcat
+                   (vector `((type . "text")
+                             (text . ,full-prompt)))
+                   (codex-ide--local-image-input-items
+                    local-images
+                    image-detail)
+                   skill-input-items))))))
+
 (after! codex-ide-window
   (defun dek/codex-ide-display-buffer-register-workspace-a (buffer &rest _)
     "Register displayed Codex BUFFER with the current Doom workspace."
@@ -287,6 +330,37 @@ to its usual Evil behavior after the first ESC submits the steering input."
   (evil-local-set-key 'normal (kbd "r") #'dek/codex-ide-rename-session))
 
 (add-hook 'codex-ide-status-mode-hook #'dek/codex-ide-status-rename-binding)
+
+(after! codex-ide-protocol
+  ;; Codex's native clients hide internal memory provenance metadata.  Filter
+  ;; only that envelope while replaying stored messages in Codex IDE.
+  (defconst dek/codex-ide-memory-citation-regexp
+    "[ \t]*<oai-mem-citation>\\(?:.\\|\n\\)*?</oai-mem-citation>[ \t]*\n?")
+
+  (defun dek/codex-ide-strip-memory-citations-a (orig message)
+    (let ((text (funcall orig message)))
+      (if (stringp text)
+          (replace-regexp-in-string dek/codex-ide-memory-citation-regexp "" text)
+        text)))
+
+  (advice-add 'codex-ide--thread-read--message-text
+              :around #'dek/codex-ide-strip-memory-citations-a))
+
+(after! codex-ide-status-mode
+  ;; Upstream prefers a live session's first prompt over the persisted thread
+  ;; name.  Suppress only that prompt lookup while rendering renamed threads,
+  ;; so their headings reflect `thread/name/set` without losing live metadata.
+  (defun dek/codex-ide-status-prefer-thread-name-a (orig thread directory layout)
+    (if-let* ((name (alist-get 'name thread))
+              ((stringp name))
+              ((not (string-empty-p name))))
+        (cl-letf (((symbol-function
+                    'codex-ide-status-mode--first-submitted-prompt-text)
+                   (lambda (_session) nil)))
+          (funcall orig thread directory layout))
+      (funcall orig thread directory layout)))
+  (advice-add 'codex-ide-status-mode--insert-thread-section
+              :around #'dek/codex-ide-status-prefer-thread-name-a))
 
 (defun dek/codex-ide--thread-short-id (thread)
   "Return a short display id for THREAD."
