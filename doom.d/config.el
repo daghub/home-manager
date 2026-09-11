@@ -1030,6 +1030,22 @@ is non-nil, offer sessions from every project."
       :desc "Session diff"             "d" #'codex-ide-session-diff-open
       :desc "Interrupt active turn"    "k" #'codex-ide-interrupt)
 
+(after! markdown-mode
+  (defun dek/markdown-preview-in-eww ()
+    "Render the current Markdown buffer in an EWW buffer."
+    (interactive)
+    (let ((browse-url-browser-function #'eww-browse-url))
+      (markdown-preview)))
+
+  (map! :map markdown-mode-map
+        :localleader
+        :desc "Preview in Emacs" "p" #'dek/markdown-preview-in-eww))
+
+(after! company
+  ;; Keep completion available on demand (`C-SPC`), but never pop it up while
+  ;; typing ordinary prose or code.
+  (setq company-idle-delay nil))
+
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
 ;; `after!' block, otherwise Doom's defaults may override your settings. E.g.
 ;;
