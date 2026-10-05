@@ -131,9 +131,13 @@
                      (codex-ide-session-p codex-ide--session)
                      (eq (current-buffer)
                          (codex-ide-session-buffer codex-ide--session)))
-            (format "Codex: %s"
-                    (downcase (codex-ide-renderer-status-label
-                               (codex-ide-session-status codex-ide--session))))))
+            (let* ((session codex-ide--session)
+                   (status (codex-ide-session-status session))
+                   (elapsed (and (equal status "running")
+                                 (dek/codex-ide--turn-elapsed-label session))))
+              (format "Codex: %s%s"
+                      (downcase (codex-ide-renderer-status-label status))
+                      (if elapsed (concat " " elapsed) "")))))
         (funcall orig buffer)))
 
   (advice-add 'helm-buffer--format-mode-name
@@ -171,6 +175,22 @@
               :around #'dek/helm-buffer-name-width-a))
 
 (after! helm
+  (defun dek/helm-workspace-buffers-mru-a (orig &rest args)
+    "Keep workspace filtering while listing buffers in recent-visit order."
+    (let ((restricted-list (symbol-function 'persp-buffer-list-restricted)))
+      (cl-letf (((symbol-function 'persp-buffer-list-restricted)
+                 (lambda (&rest arguments)
+                   (let ((allowed (apply restricted-list arguments)))
+                     ;; This is persp-mode's saved Emacs buffer-list function,
+                     ;; unaffected by Doom's temporary workspace replacement.
+                     (seq-filter
+                      (lambda (buffer) (memq buffer allowed))
+                      (funcall persp-buffer-list-function (car arguments)))))))
+        (apply orig args))))
+
+  (advice-add '+helm/workspace-mini
+              :around #'dek/helm-workspace-buffers-mru-a)
+
   ;; Doom keeps Helm navigation within a result source.  Continue into the
   ;; adjacent source at the boundary, so arrows traverse Buffers and Recentf.
   (defun dek/helm-next-candidate-or-source ()
@@ -341,6 +361,41 @@ to its usual Evil behavior after the first ESC submits the steering input."
   (evil-local-set-key 'insert [escape] #'dek/codex-ide-steer-or-exit-insert))
 
 (add-hook 'codex-ide-session-mode-hook #'dek/codex-ide-session-evil-bindings)
+
+(defun dek/codex-ide-track-turn-time-h (event session payload)
+  "Record SESSION's turn start time without resetting it on steering."
+  (let ((turn-id (plist-get payload :turn-id)))
+    (pcase event
+      ('turn-started
+       (unless (and (equal turn-id (codex-ide--session-metadata-get
+                                    session :dek-timed-turn-id))
+                    (codex-ide--session-metadata-get session :dek-turn-started-at))
+         (codex-ide--session-metadata-put session :dek-timed-turn-id turn-id)
+         (codex-ide--session-metadata-put session :dek-turn-started-at
+                                          (float-time))))
+      ((or 'thread-attached 'reset 'destroyed)
+       (codex-ide--session-metadata-put session :dek-turn-started-at nil)
+       (codex-ide--session-metadata-put session :dek-timed-turn-id nil))
+      ('turn-completed
+       (when (equal turn-id (codex-ide--session-metadata-get
+                            session :dek-timed-turn-id))
+         (codex-ide--session-metadata-put session :dek-turn-started-at nil)
+         (codex-ide--session-metadata-put session :dek-timed-turn-id nil))))))
+
+(defun dek/codex-ide--turn-elapsed-label (session)
+  "Return SESSION's current turn elapsed time, or nil if its start is unknown."
+  (when-let* ((start (codex-ide--session-metadata-get session :dek-turn-started-at))
+              (turn-id (codex-ide-session-current-turn-id session))
+              ((equal turn-id (codex-ide--session-metadata-get
+                              session :dek-timed-turn-id))))
+    (let* ((seconds (max 0 (floor (- (float-time) start))))
+           (hours (/ seconds 3600))
+           (minutes (/ (% seconds 3600) 60)))
+      (concat (if (> hours 0) (format "%dh " hours) "")
+              (if (or (> hours 0) (> minutes 0)) (format "%dm " minutes) "")
+              (format "%ds" (% seconds 60))))))
+
+(add-hook 'codex-ide-session-event-hook #'dek/codex-ide-track-turn-time-h)
 
 (defvar-local dek/codex-ide-original-buffer-name nil
   "Original transcript name used to keep associated diff buffers stable.")
