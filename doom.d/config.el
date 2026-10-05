@@ -119,6 +119,40 @@
   (add-to-list 'lsp-file-watch-ignored-directories "[/\\\\]bazel-.*\\'")
 )
 
+(after! helm-buffers
+  (setq helm-buffer-max-length nil)
+
+  (defun dek/helm-buffer-name-width-a (orig buffers source)
+    "Fit buffer names into Helm's window while leaving room for details."
+    (when-let* ((window (helm-window))
+                ((window-live-p window))
+                (helm-buffer-details-flag)
+                (buffers))
+      (let* ((details (mapcar (lambda (buffer)
+                               (helm-buffer--details buffer 'details))
+                             buffers))
+             (longest (apply #'max
+                             (mapcar (lambda (row) (string-width (car row)))
+                                     details)))
+             (mode-width (max (or helm-buffer-max-len-mode 0)
+                              (apply #'max
+                                     (mapcar (lambda (row)
+                                               (string-width (nth 2 row)))
+                                             details))))
+             ;; Size (7), separators, ellipsis/mark, and a little path context.
+             (reserved (+ 7 mode-width
+                          (* 3 (string-width helm-buffers-column-separator))
+                          (string-width helm-buffers-end-truncated-string)
+                          13))
+             (width (max 1 (min longest
+                                (- (window-body-width window) reserved)))))
+        ;; Keep Helm's selection/preselection helpers using the same width.
+        (setq-local helm-buffer-max-length width)))
+    (funcall orig buffers source))
+
+  (advice-add 'helm-highlight-buffers
+              :around #'dek/helm-buffer-name-width-a))
+
 (after! helm
   ;; Doom keeps Helm navigation within a result source.  Continue into the
   ;; adjacent source at the boundary, so arrows traverse Buffers and Recentf.
