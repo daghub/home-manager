@@ -325,6 +325,128 @@ to its usual Evil behavior after the first ESC submits the steering input."
 
 (add-hook 'codex-ide-session-mode-hook #'dek/codex-ide-session-evil-bindings)
 
+(defvar-local dek/codex-ide-original-buffer-name nil
+  "Original transcript name used to keep associated diff buffers stable.")
+
+(defun dek/codex-ide--apply-buffer-title (session title &optional fallback)
+  "Use TITLE in SESSION's buffer name without replacing the buffer.
+FALLBACK means TITLE is a display-only first-prompt label."
+  (when-let* (((stringp title))
+              ((not (string-empty-p (string-trim title))))
+              (buffer (codex-ide-session-buffer session))
+              ((buffer-live-p buffer)))
+    (unless fallback
+      (codex-ide--session-metadata-put session :dek-saved-title title))
+    (with-current-buffer buffer
+      (unless dek/codex-ide-original-buffer-name
+        (setq dek/codex-ide-original-buffer-name (buffer-name))
+        (when (fboundp 'codex-ide--log-buffer-name)
+          (codex-ide--session-metadata-put
+           session :dek-original-log-name (codex-ide--log-buffer-name session))))
+      (let* ((subject (truncate-string-to-width
+                       (replace-regexp-in-string "[\n\r\t ]+" " "
+                                                 (string-trim title))
+                       80 nil nil "…"))
+             (name (format "*%s[%s] %s*" codex-ide-buffer-name-prefix
+                           (codex-ide--project-name
+                            (codex-ide-session-directory session))
+                           subject)))
+        ;; Avoid changing the unique suffix on repeated title notifications.
+        (unless (equal (codex-ide--session-metadata-get session :dek-buffer-title)
+                       name)
+          (rename-buffer name t)
+          (codex-ide--session-metadata-put session :dek-buffer-title name))))))
+
+(defun dek/codex-ide--apply-buffer-fallback (session &rest _)
+  "Label an unnamed SESSION using its first submitted prompt."
+  (unless (codex-ide--session-metadata-get session :dek-saved-title)
+    (require 'codex-ide-status-mode)
+    (when-let* ((prompt (or (codex-ide--session-metadata-get
+                            session :dek-first-prompt)
+                           (codex-ide-status-mode--first-submitted-prompt-text
+                            session)))
+                (subject (codex-ide--thread-choice-preview prompt))
+                ((not (string-empty-p subject))))
+      (codex-ide--session-metadata-put session :dek-first-prompt subject)
+      (dek/codex-ide--apply-buffer-title
+       session subject t))))
+
+(defun dek/codex-ide--apply-thread-title (thread-id title)
+  "Update every live transcript for THREAD-ID with TITLE."
+  (when (and thread-id (fboundp 'codex-ide--session-buffer-sessions))
+    (dolist (session (codex-ide--session-buffer-sessions))
+      (when (equal thread-id (codex-ide-session-thread-id session))
+        (dek/codex-ide--apply-buffer-title session title)))))
+
+(defun dek/codex-ide-title-response-a (orig session method &rest args)
+  "Apply titles returned by thread creation/resume and successful renames."
+  (let ((result (apply orig session method args)))
+    (cond
+     ((member method '("thread/start" "thread/resume"))
+      (codex-ide--session-metadata-put session :dek-saved-title nil)
+      (codex-ide--session-metadata-put session :dek-first-prompt nil)
+      (dek/codex-ide--apply-buffer-title
+       session (alist-get 'name (alist-get 'thread result)))
+      ;; Replay may contain only recent turns.  Prefer the original preview.
+      (when-let* ((preview (alist-get 'preview (alist-get 'thread result)))
+                  ((stringp preview))
+                  ((not (string-empty-p preview))))
+        (codex-ide--session-metadata-put session :dek-first-prompt preview)
+        (dek/codex-ide--apply-buffer-fallback session)))
+     ((equal method "thread/name/set")
+      (let ((params (car args)))
+        (dek/codex-ide--apply-thread-title
+         (alist-get 'threadId params) (alist-get 'name params)))))
+    result))
+
+(defun dek/codex-ide-title-notification-a (_session message)
+  "Follow title updates by thread ID, including updates via query sessions."
+  (let ((params (alist-get 'params message)))
+    (pcase (alist-get 'method message)
+      ("thread/name/updated"
+       (dek/codex-ide--apply-thread-title
+        (alist-get 'threadId params) (alist-get 'name params)))
+      ("thread/started"
+       (let ((thread (alist-get 'thread params)))
+         (dek/codex-ide--apply-thread-title
+          (alist-get 'id thread) (alist-get 'name thread)))))))
+
+(defun dek/codex-ide-stable-diff-name-a (orig session-buffer)
+  "Keep diff buffer lookup stable when SESSION-BUFFER is renamed."
+  (funcall orig
+           (if (buffer-live-p session-buffer)
+               (or (buffer-local-value 'dek/codex-ide-original-buffer-name
+                                       session-buffer)
+                   session-buffer)
+             session-buffer)))
+
+(defun dek/codex-ide-stable-log-name-a (orig session)
+  "Keep SESSION's original log buffer accessible after title changes."
+  (or (codex-ide--session-metadata-get session :dek-original-log-name)
+      (funcall orig session)))
+
+(after! codex-ide-protocol
+  (advice-add 'codex-ide--request-sync :around #'dek/codex-ide-title-response-a))
+
+(after! codex-ide-transcript
+  (advice-add 'codex-ide--handle-notification
+              :after #'dek/codex-ide-title-notification-a)
+  ;; Submission has frozen the prompt; replay has populated the transcript.
+  (advice-add 'codex-ide--mark-session-prompt-submitted
+              :after #'dek/codex-ide--apply-buffer-fallback)
+  (advice-add 'codex-ide--restore-thread-read-transcript
+              :after #'dek/codex-ide--apply-buffer-fallback))
+
+(after! codex-ide-log
+  (advice-add 'codex-ide--log-buffer-name
+              :around #'dek/codex-ide-stable-log-name-a))
+
+(after! codex-ide-diff-view
+  (dolist (function '(codex-ide-diff-buffer-name-for-session
+                      codex-ide-diff-combined-buffer-name-for-session
+                      codex-ide-session-diff-buffer-name-for-session))
+    (advice-add function :around #'dek/codex-ide-stable-diff-name-a)))
+
 (defun dek/codex-ide--set-thread-name (session thread-id default-name)
   "Prompt for and persist a human-readable name for THREAD-ID."
   (let ((name (string-trim (read-string "Rename Codex session: " default-name))))
