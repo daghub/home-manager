@@ -122,6 +122,23 @@
 (after! helm-buffers
   (setq helm-buffer-max-length nil)
 
+  (defun dek/helm-codex-status-label-a (orig buffer)
+    "Show the live Codex session state in BUFFER's Helm mode column."
+    (or (with-current-buffer buffer
+          (when (and (derived-mode-p 'codex-ide-session-mode)
+                     (bound-and-true-p codex-ide--session)
+                     (fboundp 'codex-ide-session-p)
+                     (codex-ide-session-p codex-ide--session)
+                     (eq (current-buffer)
+                         (codex-ide-session-buffer codex-ide--session)))
+            (format "Codex: %s"
+                    (downcase (codex-ide-renderer-status-label
+                               (codex-ide-session-status codex-ide--session))))))
+        (funcall orig buffer)))
+
+  (advice-add 'helm-buffer--format-mode-name
+              :around #'dek/helm-codex-status-label-a)
+
   (defun dek/helm-buffer-name-width-a (orig buffers source)
     "Fit buffer names into Helm's window while leaving room for details."
     (when-let* ((window (helm-window))
