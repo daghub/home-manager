@@ -158,7 +158,7 @@
   ;; baking a Nix store path into the configuration.
   (setq codex-ide-cli-path (or (executable-find "codex") "codex")
         codex-ide-new-session-split 'vertical
-        codex-ide-model "gpt-5.6-terra"
+        codex-ide-model "gpt-6.1-sol"
         codex-ide-reasoning-effort "medium"
         ;; While a turn is running, RET appends prompts to the FIFO queue.
         codex-ide-running-submit-action 'queue))
